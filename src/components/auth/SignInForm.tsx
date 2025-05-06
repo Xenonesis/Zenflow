@@ -42,18 +42,19 @@ export function SignInForm() {
     setIsLoading(true);
     
     try {
-      console.log('Signing in with:', values.email);
       const { data, error } = await signIn(values.email, values.password);
       
       if (error) {
-        console.error('Sign in error:', error);
-        setError(error.message);
+        if (error.message?.includes('Invalid login credentials')) {
+          setError('The email or password you entered is incorrect. Please try again.');
+        } else {
+          setError(error.message || 'An error occurred during sign in. Please try again.');
+        }
         return;
       }
       
-      console.log('Sign in successful, redirecting to:', from);
-      // Success - redirect directly to dashboard
-      navigate('/dashboard');
+      // Success - redirect to dashboard or the page they were trying to access
+      navigate(from);
     } catch (err) {
       console.error('Sign in exception:', err);
       setError('An error occurred during sign in. Please try again.');
@@ -110,7 +111,7 @@ export function SignInForm() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••" {...field} />
+                    <Input type="password" placeholder="••••••••" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

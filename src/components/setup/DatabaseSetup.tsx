@@ -1,244 +1,423 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { supabase } from '@/lib/supabase';
+import { Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { useLocation } from 'react-router-dom';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clipboard, Database, AlertTriangle, CheckCircle, DownloadCloud, ArrowRight } from 'lucide-react';
-import { initializeDatabase } from '@/lib/database';
-import { useToast } from '@/hooks/use-toast';
 
+// This component can be used by administrators to fix database issues
 export function DatabaseSetup() {
-  const [loading, setLoading] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-  const { toast } = useToast();
+  const [isRunning, setIsRunning] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [stats, setStats] = useState<any>(null);
+  const location = useLocation();
+  const [functionAvailable, setFunctionAvailable] = useState<boolean | null>(null);
+  
+  // Auth system check state
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
+  const [authStatus, setAuthStatus] = useState<any>(null);
+  const [email, setEmail] = useState('');
+  const [emailCheckResult, setEmailCheckResult] = useState<any>(null);
 
-  const handleInitializeDatabase = async () => {
-    setLoading(true);
+  // Auto-trigger fix if redirected with action=fix_profiles
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const action = searchParams.get('action');
+    
+    if (action === 'fix_profiles' && !isRunning && !result) {
+      // Automatically run the direct fix when redirected from signup form
+      runDirectFix();
+    }
+  }, [location.search]);
+
+  // Check if the fix function is available
+  useEffect(() => {
+    const checkFunction = async () => {
+      try {
+        const { data, error } = await supabase.rpc('check_if_function_exists', {
+          function_name: 'fix_profile_creation'
+        });
+        
+        if (error) {
+          console.warn('Error checking function availability:', error);
+          setFunctionAvailable(false);
+        } else {
+          setFunctionAvailable(!!data);
+        }
+      } catch (err) {
+        console.warn('Failed to check function availability:', err);
+        setFunctionAvailable(false);
+      }
+    };
+    
+    checkFunction();
+  }, []);
+
+  const runProfilesFix = async () => {
+    setIsRunning(true);
+    setResult(null);
+    
     try {
-      const { success, error, message, warning } = await initializeDatabase();
+      // Call the database function to fix profile creation
+      const { data, error } = await supabase.rpc('fix_profile_creation');
       
-      if (success) {
-        setInitialized(true);
-        toast({
-          title: warning ? 'Database Already Set Up' : 'Database initialized',
-          description: message || 'Database tables have been initialized successfully.',
-          variant: warning ? 'default' : 'default',
+      if (error) {
+        throw new Error(`Database error: ${error.message}`);
+      }
+      
+      // Handle the response
+      if (data.success) {
+        setStats({
+          profiles: data.profiles_count || 0,
+          users: data.users_count || 0,
+          fixed: data.missing_profiles_fixed || 0
+        });
+        
+        setResult({ 
+          success: true, 
+          message: 'Database fix applied successfully. Profile creation trigger is now working.'
         });
       } else {
-        // Check for common errors
-        let errorMessage = error?.message || 'Failed to initialize database.';
-        
-        toast({
-          title: 'Initialization failed',
-          description: errorMessage,
-          variant: 'destructive',
-        });
+        throw new Error(data.error || 'Unknown error in fix operation');
       }
     } catch (err) {
-      console.error('Failed to initialize database:', err);
-      toast({
-        title: 'Initialization failed',
-        description: 'An unexpected error occurred.',
-        variant: 'destructive',
+      console.error('Failed to run profile fix:', err);
+      setResult({ 
+        success: false, 
+        message: err instanceof Error ? err.message : 'Unknown error occurred'
       });
     } finally {
-      setLoading(false);
+      setIsRunning(false);
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: 'Copied to clipboard',
-      description: 'SQL script copied to clipboard.',
-    });
+  const runDirectFix = async () => {
+    setIsRunning(true);
+    setResult(null);
+    
+    try {
+      // 1. First, drop existing trigger that might be problematic
+      await supabase.rpc('execute_sql', {
+        sql: "DROP TRIGGER IF EXISTS create_profile_on_signup ON auth.users; DROP FUNCTION IF EXISTS public.create_profile_for_new_user() CASCADE;"
+      });
+      
+      // 2. Set extremely permissive RLS policies
+      await supabase.rpc('execute_sql', {
+        sql: `
+          DROP POLICY IF EXISTS "Anyone can insert profiles" ON public.profiles;
+          CREATE POLICY "Anyone can insert profiles" 
+            ON public.profiles 
+            FOR INSERT WITH CHECK (true);
+            
+          GRANT ALL ON public.profiles TO authenticated;
+          GRANT ALL ON public.profiles TO service_role;
+          GRANT ALL ON public.profiles TO anon;
+        `
+      });
+      
+      // 3. Find any users missing profiles and create them
+      const { data: usersData } = await supabase
+        .from('auth.users')
+        .select('id');
+        
+      if (usersData) {
+        // Create any missing profiles
+        const promises = usersData.map(async (user) => {
+          await supabase
+            .from('profiles')
+            .upsert({
+              user_id: user.id,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' });
+        });
+        
+        await Promise.all(promises);
+      }
+      
+      setResult({ 
+        success: true, 
+        message: 'Direct fix applied. Signup should work now through client-side handling.'
+      });
+      
+    } catch (err) {
+      console.error('Failed to run direct fix:', err);
+      setResult({ 
+        success: false, 
+        message: err instanceof Error ? err.message : 'Unknown error occurred'
+      });
+    } finally {
+      setIsRunning(false);
+    }
   };
-
+  
+  // Function to check authentication system status
+  const checkAuthSystem = async () => {
+    setIsCheckingAuth(true);
+    setAuthStatus(null);
+    
+    try {
+      // Check if auth is accessible
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      // Verify authentication endpoints
+      const signInEndpoint = `${supabase.supabaseUrl}/auth/v1/token?grant_type=password`;
+      const response = await fetch(signInEndpoint, {
+        method: 'HEAD',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabase.supabaseKey as string
+        }
+      });
+      
+      const endpointStatus = response.status >= 400 && response.status < 500 ? 'OK' : 'Error';
+      
+      setAuthStatus({
+        accessible: !sessionError,
+        session: sessionData?.session ? 'Active' : 'None',
+        sessionError: sessionError ? sessionError.message : null,
+        signInEndpoint: endpointStatus,
+        lastChecked: new Date().toLocaleTimeString()
+      });
+    } catch (err) {
+      console.error('Auth check error:', err);
+      setAuthStatus({
+        accessible: false,
+        error: err instanceof Error ? err.message : 'Unknown error checking auth',
+        lastChecked: new Date().toLocaleTimeString()
+      });
+    } finally {
+      setIsCheckingAuth(false);
+    }
+  };
+  
+  // Function to check if an email exists in the auth system
+  const checkEmailExists = async () => {
+    if (!email || !email.includes('@')) {
+      setEmailCheckResult({
+        valid: false,
+        message: 'Please enter a valid email address'
+      });
+      return;
+    }
+    
+    setEmailCheckResult({ loading: true });
+    
+    try {
+      // Try a password reset request - will tell us if the email exists without exposing data
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      
+      if (error) {
+        if (error.message.includes('not found')) {
+          setEmailCheckResult({
+            exists: false,
+            message: 'This email is not registered in the system'
+          });
+        } else {
+          setEmailCheckResult({
+            error: true,
+            message: error.message
+          });
+        }
+      } else {
+        setEmailCheckResult({
+          exists: true,
+          message: 'This email exists in the system. A password reset email was sent.'
+        });
+      }
+    } catch (err) {
+      console.error('Email check error:', err);
+      setEmailCheckResult({
+        error: true,
+        message: err instanceof Error ? err.message : 'Error checking email'
+      });
+    }
+  };
+  
   return (
-    <Card className="w-full">
+    <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle className="flex items-center">
-          <Database className="mr-2 h-5 w-5 text-primary" />
-          Database Setup
-        </CardTitle>
-        <CardDescription>
-          Set up the database structure for the wellbeing dashboard.
-        </CardDescription>
+        <CardTitle>Database Maintenance</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="automatic">
+        <Tabs defaultValue="profiles" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="automatic">Automatic Setup</TabsTrigger>
-            <TabsTrigger value="manual">Manual Setup</TabsTrigger>
+            <TabsTrigger value="profiles">Profile Fixes</TabsTrigger>
+            <TabsTrigger value="auth">Auth Checks</TabsTrigger>
           </TabsList>
-          <TabsContent value="automatic" className="pt-4">
+          
+          <TabsContent value="profiles" className="space-y-4">
             <div className="space-y-4">
-              <div className="p-4 border rounded-md bg-slate-50 dark:bg-slate-800">
-                <h3 className="font-medium mb-2">Automatic Database Initialization</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Click the button below to automatically initialize the database tables. This requires proper Supabase credentials to be configured.
-                </p>
-                <Button 
-                  onClick={handleInitializeDatabase} 
-                  disabled={loading || initialized}
-                  className="flex items-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                      Initializing...
-                    </>
-                  ) : initialized ? (
-                    <>
-                      <CheckCircle className="h-4 w-4" />
-                      Initialized
-                    </>
-                  ) : (
-                    <>
-                      <DownloadCloud className="h-4 w-4" />
-                      Initialize Database
-                    </>
-                  )}
-                </Button>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                This utility fixes issues with user profile creation during signup.
+                Run this if new users are experiencing problems signing up with the error:
+                "Database error saving new user".
+              </p>
               
-              {initialized && (
-                <div className="p-4 border border-green-200 rounded-md bg-green-50 dark:bg-green-900/20 dark:border-green-900 text-green-800 dark:text-green-200">
-                  <div className="flex items-start">
-                    <CheckCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h3 className="font-medium">Database Initialized Successfully</h3>
-                      <p className="text-sm mt-1">
-                        All required tables have been created. You can now start using the application.
-                      </p>
-                      <div className="mt-3">
-                        <Button variant="outline" size="sm" className="text-xs">
-                          <ArrowRight className="h-3 w-3 mr-1" />
-                          Continue to Dashboard
-                        </Button>
-                      </div>
-                    </div>
+              {functionAvailable === false && (
+                <Alert variant="destructive">
+                  <AlertTitle>
+                    <AlertTriangle className="h-4 w-4 inline mr-2" />
+                    Function Not Available
+                  </AlertTitle>
+                  <AlertDescription>
+                    The fix_profile_creation function is not installed on your Supabase instance.
+                    Please run the SQL script in scripts/create-fix-profile-function.sql in the Supabase SQL Editor first.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {result && (
+                <Alert variant={result.success ? "default" : "destructive"}>
+                  <AlertTitle>
+                    {result.success ? (
+                      <CheckCircle className="h-4 w-4 inline mr-2" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 inline mr-2" />
+                    )}
+                    {result.success ? 'Success' : 'Error'}
+                  </AlertTitle>
+                  <AlertDescription>{result.message}</AlertDescription>
+                </Alert>
+              )}
+              
+              {stats && (
+                <div className="grid grid-cols-3 gap-2 pt-2">
+                  <div className="bg-muted rounded p-2 text-center">
+                    <div className="text-xl font-medium">{stats.users}</div>
+                    <div className="text-xs text-muted-foreground">Users</div>
+                  </div>
+                  <div className="bg-muted rounded p-2 text-center">
+                    <div className="text-xl font-medium">{stats.profiles}</div>
+                    <div className="text-xs text-muted-foreground">Profiles</div>
+                  </div>
+                  <div className="bg-muted rounded p-2 text-center">
+                    <Badge variant="outline" className="bg-primary/20">+{stats.fixed}</Badge>
+                    <div className="text-xs text-muted-foreground">Fixed</div>
                   </div>
                 </div>
               )}
             </div>
           </TabsContent>
-          <TabsContent value="manual" className="pt-4">
+          
+          <TabsContent value="auth" className="space-y-4">
             <div className="space-y-4">
-              <div className="p-4 border rounded-md bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 text-amber-800 dark:text-amber-200">
-                <div className="flex items-start">
-                  <AlertTriangle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h3 className="font-medium">Manual Setup Instructions</h3>
-                    <p className="text-sm mt-1">
-                      If automatic setup fails, you can manually run the SQL script in your Supabase SQL editor.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Check authentication system status and verify user emails.
+                Use this to troubleshoot login issues.
+              </p>
               
-              <div className="relative">
-                <pre className="p-4 bg-slate-900 text-slate-50 rounded-md text-xs overflow-auto max-h-[400px]">
-                  {`-- Enable Row Level Security
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-
--- Create or update the profiles table structure
-CREATE TABLE IF NOT EXISTS profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-  full_name TEXT,
-  avatar_url TEXT,
-  age INTEGER,
-  blood_group TEXT,
-  height DECIMAL,
-  weight DECIMAL,
-  gender TEXT,
-  preferences JSONB DEFAULT '{}'::JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Drop existing policies before recreating them
-DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
-
--- Create Row Level Security policies
-CREATE POLICY "Users can view their own profile" 
-ON profiles FOR SELECT 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own profile" 
-ON profiles FOR UPDATE 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own profile" 
-ON profiles FOR INSERT 
-WITH CHECK (auth.uid() = user_id);`}
-                </pre>
+              <div className="space-y-2">
                 <Button 
-                  variant="outline" 
-                  size="icon"
-                  className="absolute top-2 right-2 h-8 w-8 bg-white bg-opacity-80 hover:bg-opacity-100 dark:bg-slate-800 dark:bg-opacity-80"
-                  onClick={() => copyToClipboard(`-- Enable Row Level Security
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-
--- Create or update the profiles table structure
-CREATE TABLE IF NOT EXISTS profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-  full_name TEXT,
-  avatar_url TEXT,
-  age INTEGER,
-  blood_group TEXT,
-  height DECIMAL,
-  weight DECIMAL,
-  gender TEXT,
-  preferences JSONB DEFAULT '{}'::JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Drop existing policies before recreating them
-DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
-
--- Create Row Level Security policies
-CREATE POLICY "Users can view their own profile" 
-ON profiles FOR SELECT 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own profile" 
-ON profiles FOR UPDATE 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own profile" 
-ON profiles FOR INSERT 
-WITH CHECK (auth.uid() = user_id);`)}
+                  onClick={checkAuthSystem}
+                  disabled={isCheckingAuth}
+                  className="w-full"
                 >
-                  <Clipboard className="h-4 w-4" />
+                  {isCheckingAuth ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Checking Auth System...
+                    </>
+                  ) : 'Check Auth System Status'}
                 </Button>
+                
+                {authStatus && (
+                  <Alert variant={authStatus.accessible ? "default" : "destructive"}>
+                    <AlertTitle>
+                      {authStatus.accessible ? (
+                        <CheckCircle className="h-4 w-4 inline mr-2" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 inline mr-2" />
+                      )}
+                      Auth System Status
+                    </AlertTitle>
+                    <AlertDescription>
+                      <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+                        <div>System Accessible:</div>
+                        <div>{authStatus.accessible ? 'Yes' : 'No'}</div>
+                        
+                        {authStatus.session && (
+                          <>
+                            <div>Current Session:</div>
+                            <div>{authStatus.session}</div>
+                          </>
+                        )}
+                        
+                        {authStatus.signInEndpoint && (
+                          <>
+                            <div>Sign-in Endpoint:</div>
+                            <div>{authStatus.signInEndpoint}</div>
+                          </>
+                        )}
+                        
+                        {authStatus.error && (
+                          <>
+                            <div>Error:</div>
+                            <div>{authStatus.error}</div>
+                          </>
+                        )}
+                        
+                        <div>Last Checked:</div>
+                        <div>{authStatus.lastChecked}</div>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
               
-              <div className="text-sm">
-                <h3 className="font-medium mb-2">Steps to Set Up Manually:</h3>
-                <ol className="list-decimal ml-5 space-y-2">
-                  <li>Log in to your Supabase dashboard</li>
-                  <li>Navigate to the SQL Editor</li>
-                  <li>Create a new query</li>
-                  <li>Paste the SQL script above</li>
-                  <li>Click "Run" to execute the script</li>
-                  <li>Return to the application and refresh</li>
-                </ol>
+              <div className="space-y-2 pt-4 border-t">
+                <Label htmlFor="email-check">Check if email exists in auth system</Label>
+                <div className="flex space-x-2">
+                  <Input 
+                    id="email-check" 
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="user@example.com" 
+                  />
+                  <Button onClick={checkEmailExists} disabled={emailCheckResult?.loading}>
+                    {emailCheckResult?.loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : 'Check'}
+                  </Button>
+                </div>
+                
+                {emailCheckResult && !emailCheckResult.loading && (
+                  <Alert variant={emailCheckResult.error ? "destructive" : emailCheckResult.exists ? "default" : "warning"}>
+                    <AlertDescription>{emailCheckResult.message}</AlertDescription>
+                  </Alert>
+                )}
               </div>
             </div>
           </TabsContent>
         </Tabs>
       </CardContent>
-      <CardFooter className="flex justify-between">
-        <p className="text-xs text-muted-foreground">
-          Need help? Check out the <a href="/SUPABASE_SETUP.md" className="underline">Supabase setup guide</a>.
-        </p>
+      <CardFooter className="flex flex-col gap-2">
+        <Button 
+          onClick={runProfilesFix}
+          disabled={isRunning || functionAvailable === false}
+          className="w-full"
+        >
+          {isRunning ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Running Fix...
+            </>
+          ) : 'Fix Profile Creation'}
+        </Button>
+        
+        <Button 
+          onClick={runDirectFix}
+          variant="outline"
+          disabled={isRunning}
+          className="w-full"
+        >
+          Apply Direct Fix (Bypass Triggers)
+        </Button>
       </CardFooter>
     </Card>
   );

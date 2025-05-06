@@ -1,12 +1,26 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth-context";
-import { useEffect, useState } from "react";
-import { healthData, MoodEntry } from "@/lib/data-sync";
+import { useState, memo } from "react";
+import { MoodEntry } from "@/lib/data-sync";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import { MoodEntryForm } from "../forms/MoodEntryForm";
+import { useMoodHistory } from "@/hooks/useHealthData";
+import { 
+  SmilePlus,
+  Calendar,
+  BarChart3,
+  Plus,
+  ArrowRight,
+  Smile,
+  Frown,
+  Meh,
+  MehIcon,
+  SmileIcon,
+  FrownIcon
+} from "lucide-react";
 
 function getMoodEmoji(mood: string) {
   switch (mood) {
@@ -42,60 +56,64 @@ function getMoodColor(mood: string) {
   }
 }
 
-export function MoodTracker() {
-  const { user } = useAuth();
-  const [moodEntries, setMoodEntries] = useState<MoodEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [todayMood, setTodayMood] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
+interface MoodTrackerProps {
+  timeRange: "day" | "week" | "month" | "year";
+}
 
-  const fetchMoodEntries = async () => {
-    if (!user) return;
-    
-    setLoading(true);
-    
-    try {
-      // Get 7 days ago for the date range
-      const today = new Date();
-      const sevenDaysAgo = new Date(today);
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
-      const { data, error } = await healthData.getMoodEntriesByUser(
-        user.id,
-        sevenDaysAgo.toISOString().split('T')[0]
-      );
-      
-      if (error) {
-        console.error('Error fetching mood entries:', error);
-        setError('Failed to load mood history');
-      } else {
-        setMoodEntries(data || []);
-        
-        // Check if there's an entry for today
-        const todayStr = today.toISOString().split('T')[0];
-        const todayEntry = (data || []).find(entry => 
-          entry.recorded_at.split('T')[0] === todayStr
-        );
-        
-        if (todayEntry) {
-          setTodayMood(todayEntry.mood_label || 'neutral');
-        } else {
-          setTodayMood(null);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to fetch mood entries:', err);
-      setError('An unexpected error occurred');
-    } finally {
-      setLoading(false);
-    }
+export function MoodTracker({ timeRange }: MoodTrackerProps) {
+  const { user } = useAuth();
+  const [formOpen, setFormOpen] = useState(false);
+  
+  const { 
+    data: moodEntries = [], 
+    isLoading: loading, 
+    error: queryError,
+    refetch: fetchMoodEntries
+  } = useMoodHistory(user?.id);
+  
+  const error = queryError ? String(queryError) : null;
+  
+  // Find today's mood entry
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayEntry = moodEntries.find(entry => 
+    entry.recorded_at.split('T')[0] === todayStr
+  );
+  const todayMood = todayEntry?.mood_label || null;
+
+  const moodData = [
+    { day: "Mon", level: 4, note: "Productive day at work" },
+    { day: "Tue", level: 3, note: "Neutral day, nothing special" },
+    { day: "Wed", level: 5, note: "Great workout and social time" },
+    { day: "Thu", level: 2, note: "Stress from deadline" },
+    { day: "Fri", level: 4, note: "Looking forward to weekend" },
+    { day: "Sat", level: 5, note: "Relaxing day outdoors" },
+    { day: "Sun", level: 4, note: "Good family time" }
+  ];
+
+  const getMoodIcon = (level: number) => {
+    if (level >= 4) return <SmileIcon className="text-green-500" />;
+    if (level === 3) return <MehIcon className="text-amber-500" />;
+    return <FrownIcon className="text-red-500" />;
+  };
+
+  const getMoodLabel = (level: number) => {
+    if (level >= 4) return "Good";
+    if (level === 3) return "Neutral";
+    return "Low";
   };
   
-  useEffect(() => {
-    fetchMoodEntries();
-  }, [user]);
+  const getMoodColor = (level: number) => {
+    if (level >= 4) return "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800";
+    if (level === 3) return "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800";
+    return "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
+  };
 
+  // Calculate average mood
+  const averageMood = moodData.reduce((acc, curr) => acc + curr.level, 0) / moodData.length;
+  
+  // Get the latest mood
+  const latestMood = moodData[moodData.length - 1];
+  
   return (
     <>
       <Card>
@@ -171,7 +189,7 @@ export function MoodTracker() {
       <MoodEntryForm 
         open={formOpen} 
         onOpenChange={setFormOpen}
-        onSuccess={fetchMoodEntries}
+        onSuccess={() => fetchMoodEntries()}
       />
     </>
   );

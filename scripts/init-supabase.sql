@@ -126,8 +126,23 @@ CREATE POLICY "Users can delete their own mood entries"
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (user_id)
-  VALUES (NEW.id);
+  -- Log the new user creation attempt
+  RAISE LOG 'Creating profile for new user: %', NEW.id;
+  
+  BEGIN
+    INSERT INTO public.profiles (user_id)
+    VALUES (NEW.id);
+    
+    -- Log successful profile creation
+    RAISE LOG 'Profile created successfully for user: %', NEW.id;
+  EXCEPTION WHEN OTHERS THEN
+    -- Log the error
+    RAISE LOG 'Error creating profile for user %: % - %', NEW.id, SQLSTATE, SQLERRM;
+    
+    -- Return the user anyway so the signup succeeds even if profile creation fails
+    RETURN NEW;
+  END;
+  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

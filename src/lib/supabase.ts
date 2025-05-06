@@ -1,7 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
 // Define default timeout value (in milliseconds)
-const DEFAULT_TIMEOUT = 5000;
+const DEFAULT_TIMEOUT = 15000;
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
 
 // Get Supabase URL and key from environment variables with fallback values
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ztrtdfkkwmhdeszjuwrp.supabase.co";
@@ -17,23 +19,67 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error("Supabase URL or anonymous key is not set. Check your environment variables.");
 }
 
+// Enhanced fetch with retry and better error handling
+const enhancedFetch = async (url: string, options: any) => {
+  const controller = new AbortController();
+  const { signal } = controller;
+  
+  // Set timeout to abort the request if it takes too long
+  const timeout = setTimeout(() => {
+    controller.abort();
+    console.warn(`Request to ${url} timed out after ${DEFAULT_TIMEOUT}ms`);
+  }, DEFAULT_TIMEOUT);
+  
+  let retries = MAX_RETRIES;
+  let lastError: Error | null = null;
+  
+  while (retries > 0) {
+    try {
+      const response = await fetch(url, { ...options, signal });
+      clearTimeout(timeout);
+      
+      // Log server errors but still return the response
+      if (response.status >= 500) {
+        console.error(`Server error (${response.status}) for request to ${url}`);
+      } else if (response.status >= 400) {
+        console.warn(`Client error (${response.status}) for request to ${url}`);
+      }
+      
+      return response;
+    } catch (err) {
+      lastError = err as Error;
+      
+      // Only retry if it's a network error or timeout
+      // Don't retry 4xx errors as they are client issues
+      if (err instanceof TypeError || err.name === 'AbortError') {
+        console.warn(`Request to ${url} failed (attempt ${MAX_RETRIES - retries + 1}/${MAX_RETRIES}):`, err);
+        retries--;
+        
+        if (retries > 0) {
+          console.log(`Retrying in ${RETRY_DELAY}ms...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        }
+      } else {
+        // Don't retry other types of errors
+        break;
+      }
+    }
+  }
+  
+  // If we get here, all retries failed
+  clearTimeout(timeout);
+  throw lastError || new Error(`Request to ${url} failed after ${MAX_RETRIES} attempts`);
+};
+
 // Create the Supabase client with optimized settings
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
+    detectSessionInUrl: true,
   },
   global: {
-    // Reduce default timeout to fail faster
-    fetch: (url, options) => {
-      const controller = new AbortController();
-      const { signal } = controller;
-      
-      // Set timeout to abort the request if it takes too long
-      const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
-      
-      return fetch(url, { ...options, signal }).finally(() => clearTimeout(timeout));
-    }
+    fetch: enhancedFetch
   },
   // Enable debug mode in development
   db: {
@@ -118,29 +164,140 @@ export type UserProfile = {
 
 // Authentication helpers
 export const auth = {
-  signUp: async (email: string, password: string) => {
+  signUp: async (email: string, password: string, fullName?: string) => {
     try {
+      // Validate inputs
+      if (!email || !email.includes('@')) {
+        return { 
+          data: null, 
+          error: { message: 'Please enter a valid email address' } 
+        };
+      }
+      
+      if (!password || password.length < 6) {
+        return { 
+          data: null, 
+          error: { message: 'Password must be at least 6 characters' } 
+        };
+      }
+
+      // Standard signup flow
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: window.location.origin + '/dashboard',
+          data: {
+            full_name: fullName || '',
+          }
+        }
       });
-      return { data, error };
+      
+      if (error) {
+        console.error('Signup error:', error);
+        return { data, error };
+      }
+      
+      // Create profile for new user
+      if (data?.user?.id) {
+        try {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert({
+              user_id: data.user.id,
+              full_name: fullName || '',
+              updated_at: new Date().toISOString(),
+              preferences: {
+                theme: 'light',
+                notifications: true
+              }
+            });
+          
+          if (profileError) {
+            console.warn('Profile creation warning:', profileError);
+            // We don't return an error here as the user was still created
+          }
+        } catch (profileErr) {
+          console.warn('Profile creation exception:', profileErr);
+          // Don't fail signup if profile creation failed
+        }
+      }
+      
+      return { data, error: null };
     } catch (err) {
-      console.error('Sign up error:', err);
-      return { data: null, error: { message: 'Failed to connect to authentication service' } };
+      console.error('Unexpected error during signup:', err);
+      return { 
+        data: null, 
+        error: {
+          message: err instanceof Error ? err.message : 'An unexpected error occurred during signup',
+          status: 500
+        }
+      };
     }
   },
   
   signIn: async (email: string, password: string) => {
     try {
+      // Validate inputs
+      if (!email || !email.includes('@')) {
+        return { 
+          data: null, 
+          error: { message: 'Please enter a valid email address' } 
+        };
+      }
+      
+      if (!password) {
+        return { 
+          data: null, 
+          error: { message: 'Password is required' } 
+        };
+      }
+      
+      // Attempt to sign in with password
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      return { data, error };
+      
+      if (error) {
+        console.error('Sign in error:', error);
+        
+        // Return user-friendly error messages
+        if (error.message.includes('Invalid login credentials')) {
+          return { 
+            data: null, 
+            error: { message: 'The email or password you entered is incorrect.' } 
+          };
+        }
+        
+        return { data, error };
+      }
+      
+      // Check if user has a profile, create one if not
+      if (data?.user?.id) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', data.user.id)
+          .single();
+          
+        if (profileError || !profileData) {
+          console.log('No profile found, creating one');
+          try {
+            await createDefaultProfile(data.user.id);
+          } catch (e) {
+            console.warn('Failed to create profile during sign-in:', e);
+          }
+        }
+      }
+      
+      return { data, error: null };
     } catch (err) {
       console.error('Sign in error:', err);
-      return { data: null, error: { message: 'Failed to connect to authentication service' } };
+      return { 
+        data: null, 
+        error: { message: 'Authentication service error. Please try again.' } 
+      };
     }
   },
   
@@ -150,17 +307,32 @@ export const auth = {
       return { error };
     } catch (err) {
       console.error('Sign out error:', err);
-      return { error: { message: 'Failed to sign out' } };
+      return { 
+        error: { message: 'Error signing out. Please try again.' } 
+      };
     }
   },
   
-  getUser: async () => {
+  resetPassword: async (email: string) => {
     try {
-      const { data, error } = await supabase.auth.getUser();
+      if (!email || !email.includes('@')) {
+        return { 
+          data: null, 
+          error: { message: 'Please enter a valid email address' } 
+        };
+      }
+      
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/reset-password-confirmation',
+      });
+      
       return { data, error };
     } catch (err) {
-      console.error('Get user error:', err);
-      return { data: null, error: { message: 'Failed to get user information' } };
+      console.error('Reset password error:', err);
+      return { 
+        data: null, 
+        error: { message: 'Error sending reset password email. Please try again.' } 
+      };
     }
   },
   
@@ -170,17 +342,23 @@ export const auth = {
       return { data, error };
     } catch (err) {
       console.error('Get session error:', err);
-      return { data: null, error: { message: 'Failed to get session information' } };
+      return { 
+        data: null, 
+        error: { message: 'Error fetching session. Please try again.' } 
+      };
     }
   },
   
-  resetPassword: async (email: string) => {
+  getUser: async () => {
     try {
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email);
+      const { data, error } = await supabase.auth.getUser();
       return { data, error };
     } catch (err) {
-      console.error('Reset password error:', err);
-      return { data: null, error: { message: 'Failed to initiate password reset' } };
+      console.error('Get user error:', err);
+      return { 
+        data: null, 
+        error: { message: 'Error fetching user. Please try again.' } 
+      };
     }
   }
 };
@@ -498,34 +676,29 @@ export const userData = {
   // Add more user data operations as needed
 };
 
-// Helper function to create a default profile
-async function createDefaultProfile(userId: string) {
-  try {
-    console.log('Creating default profile for user:', userId);
-    
-    const defaultProfile = {
+/**
+ * Creates a default profile for a new user
+ */
+async function createDefaultProfile(userId: string, fullName?: string) {
+  const { error } = await supabase
+    .from('profiles')
+    .upsert({
       user_id: userId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+      full_name: fullName || '',
+      avatar_url: '',
+      updated_at: new Date().toISOString(),
+      preferences: {
+        theme: 'light',
+        notifications: true
+      }
+    });
     
-    const { data, error } = await supabase
-      .from('profiles')
-      .insert(defaultProfile)
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('Error creating default profile:', error);
-      return { data: null, error };
-    }
-    
-    console.log('Default profile created successfully');
-    return { data, error: null };
-  } catch (err) {
-    console.error('Failed to create default profile:', err);
-    return { data: null, error: { message: 'Failed to create default user profile' } };
+  if (error) {
+    console.error('Error creating default profile:', error);
+    throw error;
   }
+  
+  return { success: true };
 }
 
 // Add this export at the top of the file, right after the supabase client creation:

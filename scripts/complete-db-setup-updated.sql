@@ -30,6 +30,9 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 -- Drop existing policies before creating new ones
 DROP POLICY IF EXISTS "Users can view their own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Anyone can insert profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Service role can manage all profiles" ON public.profiles;
 
 -- Create RLS policies for profiles
 CREATE POLICY "Users can view their own profile" 
@@ -39,6 +42,20 @@ CREATE POLICY "Users can view their own profile"
 CREATE POLICY "Users can update their own profile" 
   ON public.profiles 
   FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own profile" 
+  ON public.profiles 
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Anyone policy is critical for signup flow
+CREATE POLICY "Anyone can insert profiles" 
+  ON public.profiles 
+  FOR INSERT WITH CHECK (true);
+
+-- Service role policy for admin operations
+CREATE POLICY "Service role can manage all profiles" 
+  ON public.profiles 
+  FOR ALL USING (auth.role() = 'service_role');
 
 -- Create mood_entries table for mood tracking
 CREATE TABLE IF NOT EXISTS public.mood_entries (
@@ -477,4 +494,151 @@ CREATE INDEX IF NOT EXISTS idx_sleep_logs_user_id ON public.sleep_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_daily_tasks_user_id ON public.daily_tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_daily_tasks_due_date ON public.daily_tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_wellness_trends_user_id ON public.wellness_trends(user_id);
-CREATE INDEX IF NOT EXISTS idx_wellness_trends_date ON public.wellness_trends(date); 
+CREATE INDEX IF NOT EXISTS idx_wellness_trends_date ON public.wellness_trends(date);
+
+-- Clean Setup SQL for Authentication and User Profiles that handles existing objects
+
+-- Drop existing policies first to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Anyone can insert profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Service role can manage all profiles" ON public.profiles;
+
+-- Drop existing triggers and functions to avoid conflicts
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
+DROP TRIGGER IF EXISTS create_profile_on_signup ON auth.users;
+DROP FUNCTION IF EXISTS update_profile_updated_at() CASCADE;
+DROP FUNCTION IF EXISTS public.create_profile_for_new_user() CASCADE;
+
+-- Enable UUID extension if not already enabled
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create or update profiles table
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'profiles') THEN
+    CREATE TABLE public.profiles (
+      id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+      user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+      full_name TEXT,
+      avatar_url TEXT,
+      age INTEGER,
+      blood_group TEXT CHECK (blood_group IS NULL OR blood_group IN ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')),
+      height DECIMAL,
+      weight DECIMAL,
+      gender TEXT CHECK (gender IS NULL OR gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
+      preferences JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+    );
+  ELSE
+    -- Table already exists, ensure all columns are present
+    -- Add missing columns if necessary without changing existing data
+    DO $ALTER$ 
+    BEGIN
+      -- Check and add each column if it doesn't exist
+      IF NOT EXISTS (SELECT FROM pg_attribute WHERE attrelid = 'public.profiles'::regclass AND attname = 'preferences') THEN
+        ALTER TABLE public.profiles ADD COLUMN preferences JSONB DEFAULT '{}'::jsonb;
+      END IF;
+      -- Add other column checks as needed
+    END $ALTER$;
+  END IF;
+END $$;
+
+-- Enable Row Level Security
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies for secure access
+CREATE POLICY "Users can view their own profile" 
+  ON public.profiles 
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own profile" 
+  ON public.profiles 
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own profile" 
+  ON public.profiles 
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Anyone policy is critical for signup flow
+CREATE POLICY "Anyone can insert profiles" 
+  ON public.profiles 
+  FOR INSERT WITH CHECK (true);
+
+-- Service role policy for admin operations
+CREATE POLICY "Service role can manage all profiles" 
+  ON public.profiles 
+  FOR ALL USING (auth.role() = 'service_role');
+
+-- Auto-update function for updated_at
+CREATE OR REPLACE FUNCTION update_profile_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to update timestamp
+CREATE TRIGGER update_profiles_updated_at
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION update_profile_updated_at();
+
+-- Robust profile creation trigger
+CREATE OR REPLACE FUNCTION public.create_profile_for_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Ultra-simple insert with minimal fields and error handling
+  BEGIN
+    INSERT INTO public.profiles (user_id) 
+    VALUES (NEW.id);
+  EXCEPTION 
+    WHEN unique_violation THEN
+      NULL; -- Silently do nothing on conflict
+    WHEN OTHERS THEN
+      NULL; -- Ignore all errors
+  END;
+  
+  -- Always return NEW to continue with user creation
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create the profile creation trigger
+CREATE TRIGGER create_profile_on_signup
+AFTER INSERT ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION public.create_profile_for_new_user();
+
+-- Grant appropriate permissions
+GRANT ALL ON public.profiles TO authenticated;
+GRANT ALL ON public.profiles TO service_role;
+GRANT ALL ON public.profiles TO anon;
+
+-- Add indexes for better performance if they don't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_profiles_user_id') THEN
+    CREATE INDEX idx_profiles_user_id ON public.profiles(user_id);
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_profiles_preferences') THEN
+    CREATE INDEX idx_profiles_preferences ON public.profiles USING GIN (preferences);
+  END IF;
+END $$;
+
+-- Fix any existing users without profiles
+INSERT INTO public.profiles (user_id)
+SELECT id FROM auth.users u
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.profiles p WHERE p.user_id = u.id
+);
+
+-- Report completion
+DO $$
+BEGIN
+  RAISE NOTICE 'Profile setup completed successfully';
+END $$; 

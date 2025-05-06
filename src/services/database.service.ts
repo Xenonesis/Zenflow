@@ -1,17 +1,21 @@
 import { supabase } from '../lib/supabase';
 import type { Tables } from '../types/database.types';
+import { queryCache } from '../lib/query-cache';
 
 class DatabaseService {
   // Profile methods
   async getProfile(userId: string) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-    
-    if (error) throw error;
-    return data as Tables['profiles']['Row'];
+    const cacheKey = `profile:${userId}`;
+    return queryCache.withCache(cacheKey, async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      
+      if (error) throw error;
+      return data as Tables['profiles']['Row'];
+    }, 5 * 60 * 1000); // Cache profile for 5 minutes
   }
 
   async updateProfile(userId: string, profileData: Partial<Tables['profiles']['Update']>) {
@@ -23,20 +27,27 @@ class DatabaseService {
       .single();
     
     if (error) throw error;
+    
+    // Clear the cache for this profile
+    queryCache.clear(`profile:${userId}`);
+    
     return data as Tables['profiles']['Row'];
   }
 
   // Mood methods
   async getMoodEntries(userId: string, limit = 10) {
-    const { data, error } = await supabase
-      .from('mood_entries')
-      .select('*')
-      .eq('user_id', userId)
-      .order('recorded_at', { ascending: false })
-      .limit(limit);
-    
-    if (error) throw error;
-    return data as Tables['mood_entries']['Row'][];
+    const cacheKey = `mood_entries:${userId}:${limit}`;
+    return queryCache.withCache(cacheKey, async () => {
+      const { data, error } = await supabase
+        .from('mood_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('recorded_at', { ascending: false })
+        .limit(limit);
+      
+      if (error) throw error;
+      return data as Tables['mood_entries']['Row'][];
+    }, 2 * 60 * 1000); // Cache for 2 minutes
   }
 
   async addMoodEntry(moodData: Tables['mood_entries']['Insert']) {
@@ -47,20 +58,27 @@ class DatabaseService {
       .single();
     
     if (error) throw error;
+    
+    // Clear relevant caches
+    queryCache.clear(`mood_entries:${moodData.user_id}:10`);
+    
     return data as Tables['mood_entries']['Row'];
   }
 
   // Self-care activities methods
   async getSelfCareActivities(userId: string, limit = 10) {
-    const { data, error } = await supabase
-      .from('self_care_activities')
-      .select('*')
-      .eq('user_id', userId)
-      .order('start_time', { ascending: false })
-      .limit(limit);
-    
-    if (error) throw error;
-    return data as Tables['self_care_activities']['Row'][];
+    const cacheKey = `self_care_activities:${userId}:${limit}`;
+    return queryCache.withCache(cacheKey, async () => {
+      const { data, error } = await supabase
+        .from('self_care_activities')
+        .select('*')
+        .eq('user_id', userId)
+        .order('start_time', { ascending: false })
+        .limit(limit);
+      
+      if (error) throw error;
+      return data as Tables['self_care_activities']['Row'][];
+    }, 2 * 60 * 1000); // Cache for 2 minutes
   }
 
   async addSelfCareActivity(activityData: Tables['self_care_activities']['Insert']) {
@@ -172,15 +190,35 @@ class DatabaseService {
 
   // Daily tasks methods
   async getDailyTasks(userId: string, limit = 20) {
-    const { data, error } = await supabase
-      .from('daily_tasks')
-      .select('*')
-      .eq('user_id', userId)
-      .order('due_date', { ascending: true })
-      .limit(limit);
-    
-    if (error) throw error;
-    return data as Tables['daily_tasks']['Row'][];
+    const cacheKey = `daily_tasks:${userId}:${limit}`;
+    return queryCache.withCache(cacheKey, async () => {
+      const { data, error } = await supabase
+        .from('daily_tasks')
+        .select('*')
+        .eq('user_id', userId)
+        .order('due_date', { ascending: true })
+        .limit(limit);
+      
+      if (error) throw error;
+      return data as Tables['daily_tasks']['Row'][];
+    }, 2 * 60 * 1000); // Cache for 2 minutes
+  }
+
+  // Method to get only incomplete tasks
+  async getIncompleteTasks(userId: string, limit = 20) {
+    const cacheKey = `incomplete_tasks:${userId}:${limit}`;
+    return queryCache.withCache(cacheKey, async () => {
+      const { data, error } = await supabase
+        .from('daily_tasks')
+        .select('*')
+        .eq('user_id', userId)
+        .filter('is_completed', 'eq', false)
+        .order('due_date', { ascending: true })
+        .limit(limit);
+      
+      if (error) throw error;
+      return data as Tables['daily_tasks']['Row'][];
+    }, 2 * 60 * 1000); // Cache for 2 minutes
   }
 
   async addDailyTask(taskData: Tables['daily_tasks']['Insert']) {

@@ -1,29 +1,40 @@
-
 import { Moon, Sun } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useTheme } from "./ThemeProvider";
+import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 
 export function ThemeToggle() {
-  const { theme, toggleTheme } = useTheme();
-
+  const { theme, setTheme } = useTheme();
+  
   return (
     <Button
-      variant="outline"
-      size="icon"
-      onClick={toggleTheme}
-      className="relative overflow-hidden transition-all duration-500 border-health-primary/20 hover:border-health-primary/40"
-      aria-label={`Toggle ${theme === 'light' ? 'dark' : 'light'} mode`}
+      variant="ghost"
+      size="icon-sm"
+      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      className="rounded-full bg-background/80 border shadow-sm"
     >
-      <Sun 
-        className={`h-5 w-5 transition-all duration-500 ${
-          theme === "light" ? "rotate-0 opacity-100" : "rotate-90 opacity-0"
-        } absolute text-health-primary`} 
-      />
-      <Moon 
-        className={`h-5 w-5 transition-all duration-500 ${
-          theme === "dark" ? "rotate-0 opacity-100" : "-rotate-90 opacity-0"
-        } absolute`} 
-      />
+      <div className="relative h-4 w-4">
+        {theme === "light" ? (
+          <motion.div
+            initial={{ opacity: 0, rotate: -90 }}
+            animate={{ opacity: 1, rotate: 0 }}
+            exit={{ opacity: 0, rotate: 90 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Sun className="h-4 w-4 text-amber-500" />
+          </motion.div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, rotate: 90 }}
+            animate={{ opacity: 1, rotate: 0 }}
+            exit={{ opacity: 0, rotate: -90 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Moon className="h-4 w-4 text-blue-400" />
+          </motion.div>
+        )}
+      </div>
+      <span className="sr-only">Toggle theme</span>
     </Button>
   );
 }

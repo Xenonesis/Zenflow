@@ -1,38 +1,37 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { AuthProvider } from "@/lib/auth-context";
 import { ErrorBoundary } from "@/components/error/ErrorBoundary";
-import Index from "./pages/Index";
-import About from "./pages/About";
-import NotFound from "./pages/NotFound";
-import Calendar from "./pages/Calendar";
-import History from "./pages/History";
-import Workouts from "./pages/Workouts";
-import MentalHealth from "./pages/MentalHealth"; 
-import Settings from "./pages/Settings";
-import AIInsights from "./pages/AIInsights";
-import SignInPage from "./pages/SignInPage";
-import SignUpPage from "./pages/SignUpPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage";
-import TestPage from "./pages/TestPage";
-import DataManager from "./pages/DataManager";
 import { useAuth } from "./lib/auth-context";
 import { Spinner } from "./components/ui/spinner";
 import { useEffect } from "react";
 import { initNotifications } from "@/services/notifications";
+import { prefetchService } from "@/services/prefetch.service";
+import { lazyLoad } from "@/lib/lazy-load";
+import queryClient from "@/lib/query-client";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+// Lazy load page components
+const Index = lazyLoad(() => import("./pages/Index"), { preload: true });
+const About = lazyLoad(() => import("./pages/About"));
+const NotFound = lazyLoad(() => import("./pages/NotFound"));
+const Calendar = lazyLoad(() => import("./pages/Calendar"));
+const History = lazyLoad(() => import("./pages/History"));
+const Workouts = lazyLoad(() => import("./pages/Workouts"));
+const MentalHealth = lazyLoad(() => import("./pages/MentalHealth"));
+const HealthMetrics = lazyLoad(() => import("./pages/HealthMetrics"));
+const Settings = lazyLoad(() => import("./pages/Settings"));
+const AIInsights = lazyLoad(() => import("./pages/AIInsights"));
+const SignInPage = lazyLoad(() => import("./pages/SignInPage"), { preload: true });
+const SignUpPage = lazyLoad(() => import("./pages/SignUpPage"));
+const ResetPasswordPage = lazyLoad(() => import("./pages/ResetPasswordPage"));
+const TestPage = lazyLoad(() => import("./pages/TestPage"));
+const DataManager = lazyLoad(() => import("./pages/DataManager"));
+const Landing = lazyLoad(() => import("./pages/Landing"), { preload: true });
+const SetupPage = lazyLoad(() => import("./pages/SetupPage"));
 
 // Protected route component that uses our Supabase auth
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -88,14 +87,42 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// Separate component for notification initialization
-const NotificationInitializer = () => {
+// Redirect authenticated users to dashboard if they try to access public routes
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="mb-4">Loading...</div>
+          <Spinner size="lg" />
+        </div>
+      </div>
+    );
+  }
+  
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
+// Separate component for service initialization
+const ServiceInitializer = () => {
   const { user } = useAuth();
 
-  // Initialize notifications when the component mounts if user is logged in
+  // Initialize services when the component mounts if user is logged in
   useEffect(() => {
     if (user) {
+      // Initialize notifications
       initNotifications();
+      
+      // Prefetch user data for faster page loads
+      prefetchService.prefetchUserData(user.id).catch(err => {
+        console.warn('Prefetch error (non-critical):', err);
+      });
     }
   }, [user]);
 
@@ -110,15 +137,33 @@ const App = () => {
         <ThemeProvider>
           <BrowserRouter>
             <AuthProvider>
-              <NotificationInitializer />
+              <ServiceInitializer />
               <TooltipProvider>
                 <Toaster />
                 <Sonner position="bottom-right" closeButton theme="light" />
                 <Routes>
+                  {/* Public landing page - make it the root route */}
+                  <Route path="/" element={
+                    <PublicRoute>
+                      <Landing />
+                    </PublicRoute>
+                  } />
+                  
                   {/* Auth routes */}
-                  <Route path="/signin" element={<SignInPage />} />
-                  <Route path="/signup" element={<SignUpPage />} />
+                  <Route path="/signin" element={
+                    <PublicRoute>
+                      <SignInPage />
+                    </PublicRoute>
+                  } />
+                  <Route path="/signup" element={
+                    <PublicRoute>
+                      <SignUpPage />
+                    </PublicRoute>
+                  } />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
+                  
+                  {/* Setup route for database maintenance */}
+                  <Route path="/setup" element={<SetupPage />} />
                   
                   {/* Test route to verify routing */}
                   <Route path="/test" element={
@@ -128,11 +173,6 @@ const App = () => {
                   } />
                   
                   {/* Protected routes */}
-                  <Route path="/" element={
-                    <ProtectedRoute>
-                      <Index />
-                    </ProtectedRoute>
-                  } />
                   <Route path="/dashboard" element={
                     <ProtectedRoute>
                       <Index />
@@ -161,6 +201,11 @@ const App = () => {
                   <Route path="/workouts" element={
                     <ProtectedRoute>
                       <Workouts />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/health-metrics" element={
+                    <ProtectedRoute>
+                      <HealthMetrics />
                     </ProtectedRoute>
                   } />
                   <Route path="/mental-health" element={

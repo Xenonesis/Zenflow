@@ -32,6 +32,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, subDays, parseISO } from 'date-fns';
+import { useDataLoader } from '@/hooks/useDataLoader';
+import { queryCache } from '@/lib/query-cache';
 
 // Define interfaces for data structure
 interface WellnessDataPoint {
@@ -55,87 +57,116 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#FF5733'
 export function WellnessCharts() {
   const { user, session, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("week");
-  const [loading, setLoading] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [wellnessData, setWellnessData] = useState<WellnessDataPoint[]>([]);
   const [activityData, setActivityData] = useState<ActivityCount[]>([]);
-  const [retryCount, setRetryCount] = useState(0);
   const [insertingTestData, setInsertingTestData] = useState(false);
   const [generatingHealthStats, setGeneratingHealthStats] = useState(false);
+  
+  // Create data fetcher function for the selected time period
+  const fetchWellnessData = async () => {
+    if (!user) {
+      throw new Error('No user found, cannot fetch wellness data');
+    }
+    
+    // Determine date range based on active tab
+    const today = new Date();
+    let startDate: Date;
+    
+    switch (activeTab) {
+      case 'week':
+        startDate = subDays(today, 7);
+        break;
+      case 'month':
+        startDate = subDays(today, 30);
+        break;
+      case 'quarter':
+        startDate = subDays(today, 90);
+        break;
+      case 'year':
+        startDate = subDays(today, 365);
+        break;
+      default:
+        startDate = subDays(today, 7);
+    }
+    
+    const formattedStartDate = format(startDate, 'yyyy-MM-dd');
+    const formattedEndDate = format(today, 'yyyy-MM-dd');
+    
+    // Fetch wellness trends data
+    const { data, error } = await supabase
+      .from('wellness_trends')
+      .select('*')
+      .eq('user_id', user.id)
+      .gte('date', formattedStartDate)
+      .lte('date', formattedEndDate)
+      .order('date', { ascending: true });
+    
+    if (error) {
+      throw new Error(`Failed to fetch wellness data: ${error.message}`);
+    }
+    
+    // Process data for charts
+    if (!data || data.length === 0) {
+      return [];
+    }
+    
+    // Process data for activity counts
+    const activityTypeCounts: Record<string, number> = {};
+    data.forEach(entry => {
+      if (entry.self_care_activities) {
+        Object.entries(entry.self_care_activities).forEach(([activity, count]) => {
+          activityTypeCounts[activity] = (activityTypeCounts[activity] || 0) + Number(count);
+        });
+      }
+    });
+    
+    // Set activity data (side effect)
+    const formattedActivityData = Object.entries(activityTypeCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6); // Top 6 activities
+    
+    setActivityData(formattedActivityData);
+    
+    // Format data for main charts
+    return data.map(entry => ({
+      date: entry.date,
+      mood: entry.mood_average,
+      sleep: entry.sleep_hours,
+      exercise: entry.exercise_minutes / 60, // Convert to hours for better scale
+      meditation: entry.meditation_minutes / 60,
+      activities: entry.self_care_minutes / 60,
+      journaling: entry.journal_entries_count,
+    }));
+  };
+  
+  // Use our custom data loader hook
+  const { 
+    data: wellnessData, 
+    isLoading: loading, 
+    error: loadError, 
+    refetch 
+  } = useDataLoader<WellnessDataPoint[]>({
+    fetchFn: fetchWellnessData,
+    cacheKey: user ? `wellness_data:${user.id}:${activeTab}` : undefined,
+    cacheTtl: 2 * 60 * 1000, // 2 minutes cache
+    initialData: [],
+    dependencies: [user?.id, activeTab],
+    enabled: !!user && !authLoading,
+    onError: (err) => {
+      console.error('Error loading wellness data:', err);
+      setError(err.message);
+    }
+  });
   
   // Debug logging for auth state
   useEffect(() => {
     console.log('Auth state in WellnessCharts:', { 
       userId: user?.id, 
       isAuthLoading: authLoading,
-      hasSession: !!session,
-      sessionUser: session?.user?.id
+      hasSession: !!session
     });
   }, [user, session, authLoading]);
-  
-  // Only load data once the auth state is resolved
-  useEffect(() => {
-    let isMounted = true;
-    
-    const loadInitialData = async () => {
-      // Only attempt to load data once auth is no longer loading
-      if (!authLoading && isMounted) {
-        console.log('Initial data load attempt with auth state:', !!user);
-        await fetchData(activeTab);
-      }
-    };
-    
-    loadInitialData();
-    
-    // Cleanup function
-    return () => {
-      isMounted = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading]);
-  
-  // Refetch when auth state, user, session or activeTab changes
-  useEffect(() => {
-    let isMounted = true;
-    
-    const loadData = async () => {
-      if (dataLoaded && !authLoading && isMounted) {
-        // Add a small delay to ensure auth state is settled
-        await new Promise(resolve => setTimeout(resolve, 500));
-        console.log('Refetching data due to auth/tab change, user present:', !!user);
-        await fetchData(activeTab);
-      }
-    };
-    
-    loadData();
-    
-    // Cleanup function
-    return () => {
-      isMounted = false;
-    };
-  }, [user, session, activeTab, dataLoaded, authLoading]);
-  
-  // Add a retry mechanism for empty data
-  useEffect(() => {
-    let isMounted = true;
-    
-    const retryEmptyData = async () => {
-      // If we're not loading, have a user, but no data, retry up to 3 times
-      if (!loading && !authLoading && user && wellnessData.length === 0 && retryCount < 3 && isMounted) {
-        console.log(`Retry attempt ${retryCount + 1} for empty data`);
-        setRetryCount(prev => prev + 1);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between retries
-        await fetchData(activeTab);
-      }
-    };
-    
-    retryEmptyData();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [loading, authLoading, user, wellnessData, retryCount, activeTab]);
   
   // Function to insert test data for debugging
   const insertTestData = async () => {
@@ -183,361 +214,19 @@ export function WellnessCharts() {
       }
       
       console.log("Test data insertion complete");
+      
+      // Clear the cache before refetching
+      if (user) {
+        queryCache.clear(`wellness_data:${user.id}:${activeTab}`);
+      }
+      
       // Refetch data after insertion
-      await fetchData(activeTab);
+      await refetch();
       
     } catch (error) {
       console.error("Error in insertTestData:", error);
     } finally {
       setInsertingTestData(false);
-    }
-  };
-  
-  // Function to fetch data from Supabase
-  const fetchData = async (timeRange: string) => {
-    setLoading(true);
-    setError(null);
-    
-    // Set a timeout to prevent indefinite loading - increased to 15 seconds
-    let timeoutId: NodeJS.Timeout | null = null;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error('Data fetching timeout after 15 seconds'));
-      }, 15000);
-    });
-    
-    try {
-      if (!user) {
-        console.log("No user found, cannot fetch wellness data");
-        setError("Please sign in to view your wellness data");
-        setLoading(false);
-        setDataLoaded(true);
-        return;
-      }
-      
-      console.log("Fetching wellness data for user:", user.id);
-      
-      // Try to fetch wellness trends directly first as an optimization
-      try {
-        const now = new Date();
-        let startDate;
-        
-        // Determine date range based on selected tab
-        if (timeRange === 'week') {
-          startDate = subDays(now, 7);
-        } else if (timeRange === 'month') {
-          startDate = subDays(now, 30);
-        } else { // year
-          startDate = subDays(now, 365);
-        }
-        
-        const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-        const formattedEndDate = format(now, 'yyyy-MM-dd');
-        
-        console.log(`Attempting direct wellness_trends fetch (${timeRange}): ${formattedStartDate} to ${formattedEndDate}`);
-        
-        const { data: trendsData, error: trendsError } = await supabase
-          .from('wellness_trends')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('date', formattedStartDate)
-          .lte('date', formattedEndDate)
-          .order('date', { ascending: true });
-        
-        if (trendsError) {
-          console.error("Error fetching wellness_trends:", trendsError);
-        } else if (trendsData && trendsData.length > 0) {
-          console.log(`Successfully fetched ${trendsData.length} wellness trend entries directly`);
-          
-          // Transform the data into the format expected by the charts
-          const directData = trendsData.map(entry => ({
-            date: entry.date,
-            mood: entry.mood_average || undefined,
-            sleep: entry.sleep_hours || undefined,
-            exercise: entry.exercise_minutes || undefined,
-            meditation: entry.meditation_minutes || undefined,
-            journaling: entry.journal_entries_count || undefined
-          }));
-          
-          setWellnessData(directData);
-          setLoading(false);
-          setDataLoaded(true);
-          
-          // Clear timeout since we got data
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = null;
-          }
-          
-          return; // Exit early since we have data
-        } else {
-          console.log("No direct wellness_trends found, falling back to individual data sources");
-        }
-      } catch (directFetchError) {
-        console.error("Error in direct wellness_trends fetch:", directFetchError);
-        // Continue with regular fetch approach
-      }
-      
-      // Initialize data map with dates
-      const dateMap = new Map<string, WellnessDataPoint>();
-      
-      // Create array of dates for the selected time range
-      let currentDate = subDays(new Date(), 7);
-      while (currentDate <= new Date()) {
-        const dateStr = format(currentDate, 'yyyy-MM-dd');
-        dateMap.set(dateStr, { date: dateStr });
-        currentDate = new Date(currentDate.setDate(currentDate.getDate() + 1));
-      }
-
-      // Define all data fetching promises
-      const moodPromise = supabase
-        .from('mood_entries')
-        .select('mood_score, recorded_at')
-        .eq('user_id', user.id)
-        .gte('recorded_at', subDays(new Date(), 7).toISOString())
-        .order('recorded_at', { ascending: true });
-        
-      const sleepPromise = supabase
-        .from('sleep_logs')
-        .select('sleep_date, duration_hours, quality_rating')
-        .eq('user_id', user.id)
-        .gte('sleep_date', subDays(new Date(), 7).toISOString().split('T')[0])
-        .order('sleep_date', { ascending: true });
-        
-      const meditationPromise = supabase
-        .from('meditations')
-        .select('duration, completed_at')
-        .eq('user_id', user.id)
-        .gte('completed_at', subDays(new Date(), 7).toISOString())
-        .order('completed_at', { ascending: true });
-        
-      const exercisePromise = supabase
-        .from('exercises')
-        .select('duration, completed_at')
-        .eq('user_id', user.id)
-        .gte('completed_at', subDays(new Date(), 7).toISOString())
-        .order('completed_at', { ascending: true });
-        
-      const activitiesPromise = supabase
-        .from('self_care_activities')
-        .select('activity_type, duration, start_time')
-        .eq('user_id', user.id)
-        .gte('start_time', subDays(new Date(), 7).toISOString())
-        .order('start_time', { ascending: true });
-        
-      const journalPromise = supabase
-        .from('journal_entries')
-        .select('created_at')
-        .eq('user_id', user.id)
-        .gte('created_at', subDays(new Date(), 7).toISOString())
-        .order('created_at', { ascending: true });
-      
-      // Execute all promises in parallel with the timeout
-      try {
-        const results = await Promise.race([
-          Promise.allSettled([
-            moodPromise,
-            sleepPromise,
-            meditationPromise,
-            exercisePromise,
-            activitiesPromise,
-            journalPromise
-          ]),
-          timeoutPromise
-        ]);
-        
-        // Clear the timeout since we got a response
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        
-        if (!Array.isArray(results)) {
-          // This means timeoutPromise resolved first
-          throw new Error('Data fetching timeout');
-        }
-        
-        // Process all results, even if some failed
-        const [
-          moodResult,
-          sleepResult,
-          meditationResult,
-          exerciseResult,
-          activitiesResult,
-          journalResult
-        ] = results;
-        
-        // Process mood entries if successful
-        if (moodResult.status === 'fulfilled' && !moodResult.value.error) {
-          const moodEntries = moodResult.value.data;
-          console.log(`Received ${moodEntries?.length || 0} mood entries`);
-          
-          moodEntries?.forEach(entry => {
-            const dateStr = format(parseISO(entry.recorded_at), 'yyyy-MM-dd');
-            const existingData = dateMap.get(dateStr) || { date: dateStr };
-            dateMap.set(dateStr, { 
-              ...existingData, 
-              mood: entry.mood_score 
-            });
-          });
-        } else if (moodResult.status === 'fulfilled' && moodResult.value.error) {
-          console.error("Error fetching mood entries:", moodResult.value.error);
-        } else {
-          console.error("Failed to fetch mood entries:", moodResult.reason);
-        }
-        
-        // Process sleep logs if successful
-        if (sleepResult.status === 'fulfilled' && !sleepResult.value.error) {
-          const sleepLogs = sleepResult.value.data;
-          console.log(`Received ${sleepLogs?.length || 0} sleep logs`);
-          
-          sleepLogs?.forEach(entry => {
-            const dateStr = entry.sleep_date;
-            const existingData = dateMap.get(dateStr) || { date: dateStr };
-            dateMap.set(dateStr, { 
-              ...existingData, 
-              sleep: entry.quality_rating
-            });
-          });
-        } else if (sleepResult.status === 'fulfilled' && sleepResult.value.error) {
-          console.error("Error fetching sleep logs:", sleepResult.value.error);
-        } else {
-          console.error("Failed to fetch sleep logs:", sleepResult.reason);
-        }
-        
-        // Process meditation sessions if successful
-        if (meditationResult.status === 'fulfilled' && !meditationResult.value.error) {
-          const meditations = meditationResult.value.data;
-          console.log(`Received ${meditations?.length || 0} meditation sessions`);
-          
-          meditations?.forEach(entry => {
-            const dateStr = format(parseISO(entry.completed_at), 'yyyy-MM-dd');
-            const existingData = dateMap.get(dateStr) || { date: dateStr };
-            const existingDuration = existingData.meditation || 0;
-            dateMap.set(dateStr, { 
-              ...existingData, 
-              meditation: existingDuration + entry.duration
-            });
-          });
-        } else if (meditationResult.status === 'fulfilled' && meditationResult.value.error) {
-          console.error("Error fetching meditation sessions:", meditationResult.value.error);
-        } else {
-          console.error("Failed to fetch meditation sessions:", meditationResult.reason);
-        }
-        
-        // Process exercise logs if successful
-        if (exerciseResult.status === 'fulfilled' && !exerciseResult.value.error) {
-          const exercises = exerciseResult.value.data;
-          console.log(`Received ${exercises?.length || 0} exercise logs`);
-          
-          exercises?.forEach(entry => {
-            const dateStr = format(parseISO(entry.completed_at), 'yyyy-MM-dd');
-            const existingData = dateMap.get(dateStr) || { date: dateStr };
-            const existingDuration = existingData.exercise || 0;
-            dateMap.set(dateStr, { 
-              ...existingData, 
-              exercise: existingDuration + entry.duration
-            });
-          });
-        } else if (exerciseResult.status === 'fulfilled' && exerciseResult.value.error) {
-          console.error("Error fetching exercise logs:", exerciseResult.value.error);
-        } else {
-          console.error("Failed to fetch exercise logs:", exerciseResult.reason);
-        }
-        
-        // Count activities by type for pie chart
-        const activityCounts = new Map<string, number>();
-        
-        // Process self-care activities if successful
-        if (activitiesResult.status === 'fulfilled' && !activitiesResult.value.error) {
-          const activities = activitiesResult.value.data;
-          console.log(`Received ${activities?.length || 0} self-care activities`);
-          
-          activities?.forEach(entry => {
-            const dateStr = format(parseISO(entry.start_time), 'yyyy-MM-dd');
-            const existingData = dateMap.get(dateStr) || { date: dateStr };
-            const existingCount = existingData.activities || 0;
-            dateMap.set(dateStr, { 
-              ...existingData, 
-              activities: existingCount + 1 
-            });
-            
-            // Count by activity type
-            const currentCount = activityCounts.get(entry.activity_type) || 0;
-            activityCounts.set(entry.activity_type, currentCount + 1);
-          });
-        } else if (activitiesResult.status === 'fulfilled' && activitiesResult.value.error) {
-          console.error("Error fetching self-care activities:", activitiesResult.value.error);
-        } else {
-          console.error("Failed to fetch self-care activities:", activitiesResult.reason);
-        }
-        
-        // Process journal entries if successful
-        if (journalResult.status === 'fulfilled' && !journalResult.value.error) {
-          const journalEntries = journalResult.value.data;
-          console.log(`Received ${journalEntries?.length || 0} journal entries`);
-          
-          journalEntries?.forEach(entry => {
-            const dateStr = format(parseISO(entry.created_at), 'yyyy-MM-dd');
-            const existingData = dateMap.get(dateStr) || { date: dateStr };
-            const existingCount = existingData.journaling || 0;
-            dateMap.set(dateStr, { 
-              ...existingData, 
-              journaling: existingCount + 1 
-            });
-          });
-        } else if (journalResult.status === 'fulfilled' && journalResult.value.error) {
-          console.error("Error fetching journal entries:", journalResult.value.error);
-        } else {
-          console.error("Failed to fetch journal entries:", journalResult.reason);
-        }
-        
-        // Convert map to array and sort by date
-        const dataArray = Array.from(dateMap.values()).sort((a, b) => 
-          new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-        
-        console.log("Processed data points:", dataArray.length);
-        
-        // Create activity type data for pie chart
-        const activityTypeData = Array.from(activityCounts.entries()).map(([name, value]) => ({
-          name,
-          value
-        }));
-        
-        // Check if we have any meaningful data
-        const hasData = dataArray.some(d => d.mood !== undefined || d.sleep !== undefined || 
-                                         d.exercise !== undefined || d.meditation !== undefined);
-        
-        if (dataArray.length === 0 || !hasData) {
-          console.log("No data found for the selected time period");
-          setWellnessData([]);
-          setActivityData([]);
-        } else {
-          setWellnessData(dataArray);
-          setActivityData(activityTypeData.length > 0 ? activityTypeData : []);
-        }
-      } catch (promiseError) {
-        console.error('Error in Promise.race:', promiseError);
-        throw promiseError;
-      } finally {
-        // Ensure timeout is cleared
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching wellness data:', err);
-      setError('Failed to load wellness data. Please try again later.');
-      setWellnessData([]);
-      setActivityData([]);
-    } finally {
-      // Make sure we clear any lingering timeout
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      setLoading(false);
-      setDataLoaded(true);
     }
   };
   
@@ -619,7 +308,7 @@ export function WellnessCharts() {
       }));
       
       // Update the UI immediately with the generated data
-      setWellnessData(directData);
+      await refetch(directData);
       
       console.log("Health statistics generation and insertion complete");
     } catch (error) {
@@ -627,7 +316,6 @@ export function WellnessCharts() {
     } finally {
       setGeneratingHealthStats(false);
       setLoading(false);
-      setDataLoaded(true);
     }
   };
   
@@ -637,7 +325,6 @@ export function WellnessCharts() {
       user && 
       !loading && 
       !authLoading && 
-      dataLoaded && 
       wellnessData.length === 0 && 
       !generatingHealthStats;
       
@@ -645,7 +332,7 @@ export function WellnessCharts() {
       console.log("No wellness data found, automatically generating health statistics");
       generateHealthStatistics();
     }
-  }, [user, loading, authLoading, dataLoaded, wellnessData.length, generatingHealthStats]);
+  }, [user, loading, authLoading, wellnessData.length, generatingHealthStats]);
   
   // Custom tooltip for bar chart
   const CustomTooltip = ({ active, payload, label }: any) => {

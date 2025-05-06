@@ -13,12 +13,20 @@ import {
   Moon,
   ArrowUp,
   ArrowDown,
-  Target
+  Target,
+  ArrowUpRight,
+  ArrowDownRight,
+  ActivitySquare,
+  Footprints,
+  Timer,
+  Battery
 } from 'lucide-react';
 import { databaseService } from '@/services/database.service';
 import { format, subDays, subWeeks, subMonths, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { Tables } from '@/types/database.types';
 import { supabase } from '@/lib/supabase';
+import { Badge } from "@/components/ui/badge";
+import { ActivityRing } from "@/components/ui/activity-ring";
 
 // Define the structure for our health data
 interface HealthData {
@@ -102,11 +110,16 @@ const initialHealthData: HealthData = {
   },
 };
 
-export function HealthStatistics() {
+interface HealthStatisticsProps {
+  timeRange: "day" | "week" | "month" | "year";
+}
+
+export function HealthStatistics({ timeRange }: HealthStatisticsProps) {
   const { user } = useAuth();
   const [healthData, setHealthData] = useState<HealthData>(initialHealthData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState("overview");
 
   useEffect(() => {
     async function fetchUserHealthData() {
@@ -311,46 +324,91 @@ export function HealthStatistics() {
       return Math.floor((hash % 100) / 100 * (max - min) + min);
     };
     
+    // More realistic patterns - most people have higher activity during weekdays
+    // and sleep patterns that follow a weekly cycle
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
+    
+    // Activity modifier based on day of week (weekends typically have less structured activity)
+    const activityModifier = dayOfWeek >= 1 && dayOfWeek <= 5 ? 1.2 : 0.8;
+    
+    // Sleep modifier (people tend to sleep more on weekends)
+    const sleepModifier = dayOfWeek >= 1 && dayOfWeek <= 4 ? 0.9 : 1.1;
+    
+    // Heart rate varies by time of day
+    const hour = today.getHours();
+    const heartRateModifier = hour >= 8 && hour <= 18 ? 1.1 : 0.9; // Higher during day
+    
+    // Base steps adjusted by activity modifier
+    const baseSteps = Math.floor(rand(4000, 12000) * activityModifier);
+    
+    // Base sleep hours adjusted by sleep modifier
+    const baseSleepHours = (rand(6, 9) * sleepModifier).toFixed(1);
+    
+    // Base heart rate adjusted by time of day
+    const baseHeartRate = Math.floor(rand(60, 80) * heartRateModifier);
+    
+    // Weekly pattern - more workouts mid-week, fewer on weekends
+    const weeklyWorkouts = dayOfWeek === 0 || dayOfWeek === 6 ? 
+      rand(2, 4) : 
+      rand(4, 6);
+    
     return {
       today: {
-        steps: rand(4000, 12000),
-        activeMinutes: rand(20, 120),
-        caloriesBurned: rand(1200, 3000),
+        steps: baseSteps,
+        activeMinutes: Math.floor(baseSteps / 100), // Roughly 1 active minute per 100 steps
+        caloriesBurned: Math.floor(baseSteps * 0.05 + rand(800, 1200)), // Base metabolism + activity
         heartRate: {
-          current: rand(60, 85),
-          min: rand(55, 65),
-          max: rand(120, 160),
+          current: baseHeartRate,
+          min: Math.max(55, baseHeartRate - rand(10, 15)),
+          max: baseHeartRate + rand(40, 60), // Max from exercise
         },
-        hydration: rand(4, 10) * 100, // ml
+        hydration: rand(1500, 2500), // ml
         sleep: {
-          hours: rand(6, 9),
+          hours: parseFloat(baseSleepHours),
           quality: rand(65, 95),
         },
         bloodPressure: {
-          systolic: rand(110, 140),
-          diastolic: rand(70, 90),
+          systolic: 110 + (baseHeartRate - 60), // Correlate with heart rate
+          diastolic: 70 + Math.floor((baseHeartRate - 60) / 2),
         }
       },
       weekly: {
-        averageSteps: rand(6000, 10000),
-        totalActiveMinutes: rand(150, 400),
-        totalCaloriesBurned: rand(10000, 18000),
-        averageHeartRate: rand(65, 80),
-        averageHydration: rand(5, 9) * 100, // ml per day
-        averageSleep: rand(6, 8) + (rand(0, 60) / 60), // hours
-        workouts: rand(2, 6),
+        averageSteps: Math.floor(baseSteps * rand(90, 110) / 100), // Slight variation day to day
+        totalActiveMinutes: Math.floor(baseSteps / 100) * 7, // Week's worth of active minutes
+        totalCaloriesBurned: (Math.floor(baseSteps * 0.05) + rand(800, 1200)) * 7, // Week's worth of calories
+        averageHeartRate: baseHeartRate,
+        averageHydration: rand(1800, 2200), // ml per day
+        averageSleep: parseFloat(baseSleepHours),
+        workouts: weeklyWorkouts,
         progressToGoal: rand(50, 95),
       },
       monthly: {
-        averageSteps: rand(7000, 10000),
-        totalWorkouts: rand(10, 25),
+        averageSteps: Math.floor(baseSteps * rand(95, 105) / 100), // Monthly average close to daily
+        totalWorkouts: weeklyWorkouts * 4, // Roughly 4 weeks worth
         longestWorkout: rand(45, 120),
-        averageSleep: rand(6, 8) + (rand(0, 60) / 60), // hours
-        restDays: rand(4, 10),
-        progressToGoal: rand(60, 98),
+        averageSleep: parseFloat(baseSleepHours),
+        restDays: 30 - (weeklyWorkouts * 4), // Rest days = non-workout days
+        progressToGoal: rand(60, 95),
       }
     };
   }
+
+  // Get the title based on time range
+  const getTimeRangeTitle = () => {
+    switch (timeRange) {
+      case "day":
+        return "Today's Health Metrics";
+      case "week":
+        return "This Week's Health Summary";
+      case "month":
+        return "Monthly Health Overview";
+      case "year":
+        return "Yearly Health Trends";
+      default:
+        return "Health Statistics";
+    }
+  };
 
   if (loading) {
     return (
@@ -371,274 +429,182 @@ export function HealthStatistics() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">Health Statistics</h3>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div>
+          <h3 className="text-xl font-semibold">{getTimeRangeTitle()}</h3>
+          <p className="text-sm text-muted-foreground">Track your daily activity and physical health metrics</p>
+        </div>
+        
+        <Tabs value={activeView} onValueChange={setActiveView} className="w-full sm:w-auto">
+          <TabsList className="grid w-full sm:w-auto grid-cols-3 h-8">
+            <TabsTrigger value="overview" className="text-xs h-8">Overview</TabsTrigger>
+            <TabsTrigger value="activity" className="text-xs h-8">Activity</TabsTrigger>
+            <TabsTrigger value="vitals" className="text-xs h-8">Vitals</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
       
-      <Tabs defaultValue="today" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="today">Today</TabsTrigger>
-          <TabsTrigger value="week">This Week</TabsTrigger>
-          <TabsTrigger value="month">This Month</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="today" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Activity className="h-4 w-4 mr-2 text-health-primary" />
-                  Steps
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.today.steps.toLocaleString()}</div>
-                <Progress value={(healthData.today.steps / 10000) * 100} className="h-2 mt-2" />
-                <p className="text-xs text-muted-foreground mt-1">Goal: 10,000 steps</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Flame className="h-4 w-4 mr-2 text-orange-500" />
-                  Calories Burned
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.today.caloriesBurned.toLocaleString()}</div>
-                <Progress value={(healthData.today.caloriesBurned / 2500) * 100} className="h-2 mt-2" />
-                <p className="text-xs text-muted-foreground mt-1">Goal: 2,500 calories</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Heart className="h-4 w-4 mr-2 text-red-500" />
-                  Heart Rate
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.today.heartRate.current} BPM</div>
-                <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                  <span className="flex items-center">
-                    <ArrowDown className="h-3 w-3 mr-1 text-blue-500" />
-                    Min: {healthData.today.heartRate.min}
-                  </span>
-                  <span className="flex items-center">
-                    <ArrowUp className="h-3 w-3 mr-1 text-red-500" />
-                    Max: {healthData.today.heartRate.max}
-                  </span>
+      <TabsContent value="overview" className="space-y-4 mt-0">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard 
+            label="Calories Burned"
+            value={healthData.today.caloriesBurned}
+            total={null}
+            trend="up"
+            percentage={(healthData.today.caloriesBurned / 2500) * 100}
+            change={""}
+            icon={<Flame className="h-4 w-4" />}
+            color="from-orange-500 to-red-500"
+          />
+          <StatCard 
+            label="Steps"
+            value={healthData.today.steps}
+            total={null}
+            trend="up"
+            percentage={(healthData.today.steps / 10000) * 100}
+            change={""}
+            icon={<Footprints className="h-4 w-4" />}
+            color="from-blue-500 to-indigo-500"
+          />
+          <StatCard 
+            label="Active Minutes"
+            value={healthData.today.activeMinutes}
+            total={null}
+            trend="up"
+            percentage={(healthData.today.activeMinutes / 60) * 100}
+            change={""}
+            icon={<Timer className="h-4 w-4" />}
+            color="from-green-500 to-emerald-500"
+          />
+          <StatCard 
+            label="Heart Rate"
+            value={healthData.today.heartRate.current}
+            total={null}
+            trend="down"
+            percentage={(healthData.today.heartRate.current / 130) * 100}
+            change={""}
+            icon={<Heart className="h-4 w-4" />}
+            color="from-health-primary to-health-secondary"
+            unit="bpm"
+          />
+        </div>
+      </TabsContent>
+      
+      <TabsContent value="activity" className="space-y-4 mt-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Daily Activity Distribution</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[120px] flex items-center justify-center">
+                <p className="text-muted-foreground text-sm">Activity chart would go here</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Activity Intensity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[120px] flex items-center justify-center">
+                <p className="text-muted-foreground text-sm">Intensity chart would go here</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </TabsContent>
+      
+      <TabsContent value="vitals" className="space-y-4 mt-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Heart Rate</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[120px] flex items-center justify-center">
+                <p className="text-muted-foreground text-sm">Heart rate chart would go here</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Recovery Status</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-3xl font-bold">{healthData.today.heartRate.current}<span className="text-sm font-normal">%</span></p>
+                  <p className="text-xs text-muted-foreground">Recovery Score</p>
+                  <div className={`flex items-center mt-1 ${healthData.today.heartRate.current > 65 ? 'text-green-500' : 'text-red-500'}`}>
+                    {healthData.today.heartRate.current > 65 ? (
+                      <ArrowUpRight className="h-3 w-3 mr-1" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 mr-1" />
+                    )}
+                    <span className="text-xs">{healthData.today.heartRate.current > 65 ? "+3" : "-3"}</span>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <AlarmClock className="h-4 w-4 mr-2 text-health-secondary" />
-                  Active Minutes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.today.activeMinutes} min</div>
-                <Progress value={(healthData.today.activeMinutes / 60) * 100} className="h-2 mt-2" />
-                <p className="text-xs text-muted-foreground mt-1">Goal: 60 minutes</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Droplets className="h-4 w-4 mr-2 text-blue-500" />
-                  Hydration
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{(healthData.today.hydration / 1000).toFixed(1)}L</div>
-                <Progress value={(healthData.today.hydration / 2500) * 100} className="h-2 mt-2" />
-                <p className="text-xs text-muted-foreground mt-1">Goal: 2.5L</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Moon className="h-4 w-4 mr-2 text-indigo-400" />
-                  Sleep
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.today.sleep.hours.toFixed(1)}h</div>
-                <Progress value={(healthData.today.sleep.hours / 8) * 100} className="h-2 mt-2" />
-                <p className="text-xs text-muted-foreground mt-1">Quality: {healthData.today.sleep.quality}%</p>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="week" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Activity className="h-4 w-4 mr-2 text-health-primary" />
-                  Average Steps
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.weekly.averageSteps.toLocaleString()}</div>
-                <Progress value={(healthData.weekly.averageSteps / 10000) * 100} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Dumbbell className="h-4 w-4 mr-2 text-health-secondary" />
-                  Workouts
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.weekly.workouts}</div>
-                <Progress value={(healthData.weekly.workouts / 7) * 100} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Flame className="h-4 w-4 mr-2 text-orange-500" />
-                  Total Calories Burned
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.weekly.totalCaloriesBurned.toLocaleString()}</div>
-                <Progress value={(healthData.weekly.totalCaloriesBurned / 17500) * 100} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <AlarmClock className="h-4 w-4 mr-2 text-health-secondary" />
-                  Active Minutes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.weekly.totalActiveMinutes} min</div>
-                <Progress value={(healthData.weekly.totalActiveMinutes / 300) * 100} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Heart className="h-4 w-4 mr-2 text-red-500" />
-                  Avg Heart Rate
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.weekly.averageHeartRate} BPM</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Target className="h-4 w-4 mr-2 text-health-primary" />
-                  Weekly Goal Progress
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.weekly.progressToGoal}%</div>
-                <Progress value={healthData.weekly.progressToGoal} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="month" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Activity className="h-4 w-4 mr-2 text-health-primary" />
-                  Average Steps
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.monthly.averageSteps.toLocaleString()}</div>
-                <Progress value={(healthData.monthly.averageSteps / 10000) * 100} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Dumbbell className="h-4 w-4 mr-2 text-health-secondary" />
-                  Total Workouts
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.monthly.totalWorkouts}</div>
-                <Progress value={(healthData.monthly.totalWorkouts / 30) * 100} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <AlarmClock className="h-4 w-4 mr-2 text-health-secondary" />
-                  Longest Workout
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.monthly.longestWorkout} min</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Moon className="h-4 w-4 mr-2 text-indigo-400" />
-                  Average Sleep
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.monthly.averageSleep.toFixed(1)}h</div>
-                <Progress value={(healthData.monthly.averageSleep / 8) * 100} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Activity className="h-4 w-4 mr-2 text-gray-500" />
-                  Rest Days
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.monthly.restDays}</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center">
-                  <Target className="h-4 w-4 mr-2 text-health-primary" />
-                  Monthly Goal Progress
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{healthData.monthly.progressToGoal}%</div>
-                <Progress value={healthData.monthly.progressToGoal} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+                <div>
+                  <ActivityRing 
+                    progress={(healthData.today.heartRate.current - 60) / 20 * 100} 
+                    size={80} 
+                    color="teal" 
+                  />
+                </div>
+              </div>
+              <div className="flex mt-4 justify-between">
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">
+                  <Battery className="h-3 w-3 mr-1 fill-current" /> Good Recovery
+                </Badge>
+                <p className="text-xs text-muted-foreground">Ready for activity</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </TabsContent>
     </div>
+  );
+}
+
+interface StatCardProps {
+  label: string;
+  value: number;
+  total: number | null;
+  trend: "up" | "down";
+  percentage: number;
+  change: string;
+  icon: React.ReactNode;
+  color: string;
+  unit?: string;
+}
+
+function StatCard({ label, value, total, trend, percentage, change, icon, color, unit = "" }: StatCardProps) {
+  return (
+    <Card className="overflow-hidden">
+      <div className={`h-1.5 w-full bg-gradient-to-r ${color}`}></div>
+      <CardContent className="p-4">
+        <div className="flex justify-between items-start mb-2">
+          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+          <div className={`flex items-center ${trend === "up" ? 'text-green-500' : 'text-red-500'}`}>
+            {trend === "up" ? (
+              <ArrowUpRight className="h-3 w-3 mr-1" />
+            ) : (
+              <ArrowDownRight className="h-3 w-3 mr-1" />
+            )}
+            <span className="text-xs font-medium">{change}</span>
+          </div>
+        </div>
+        <div className="flex justify-between items-end">
+          <div>
+            <p className="text-2xl font-bold">{value.toLocaleString()}{unit}</p>
+            {total && (
+              <p className="text-xs text-muted-foreground mt-1">of {total.toLocaleString()} goal</p>
+            )}
+          </div>
+          <ActivityRing progress={percentage} size={40} color={color.includes("health-primary") ? "purple" : "teal"} />
+        </div>
+      </CardContent>
+    </Card>
   );
 } 

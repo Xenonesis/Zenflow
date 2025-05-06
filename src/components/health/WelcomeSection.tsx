@@ -1,15 +1,18 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Trophy } from "lucide-react";
+import { Trophy, Sparkles, BarChart3, Lightbulb } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
 import { userData } from "@/lib/supabase";
 import { UserProfile } from "@/lib/supabase";
+import { Button } from "@/components/ui/button";
 
 export function WelcomeSection() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [timeOfDay, setTimeOfDay] = useState<string>("");
+  const [quote, setQuote] = useState<string>("");
   
   useEffect(() => {
     async function loadProfile() {
@@ -36,52 +39,94 @@ export function WelcomeSection() {
     loadProfile();
   }, [user]);
 
+  // Get greeting based on time of day
+  useEffect(() => {
+    const hour = new Date().getHours();
+    let greeting = "Good ";
+    
+    if (hour < 12) {
+      greeting += "morning";
+      setTimeOfDay("morning");
+    } else if (hour < 18) {
+      greeting += "afternoon";
+      setTimeOfDay("afternoon");
+    } else {
+      greeting += "evening";
+      setTimeOfDay("evening");
+    }
+    
+    // Set a random motivational quote
+    const quotes = [
+      "The mind and body connection is the key to holistic wellness.",
+      "Small consistent actions lead to significant wellbeing improvements.",
+      "Balance in all things creates harmony within yourself.",
+      "Your mental health is just as important as your physical fitness.",
+      "Today is a new opportunity to grow stronger in mind and body.",
+      "Each breath is an opportunity to reset your focus and intention."
+    ];
+    
+    setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
+  }, []);
+
   const today = new Date();
   const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const dayName = dayNames[today.getDay()];
   const date = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   
+  const firstName = user?.name?.split(" ")[0] || "there";
+  
   return (
-    <Card className="mb-6 bg-gradient-to-r from-health-soft to-white animate-fade-in dark:from-slate-800 dark:to-slate-900">
-      <CardContent className="pt-6">
-        <div className="flex flex-col md:flex-row justify-between gap-4">
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-health-dark dark:text-white">
-              Good {getTimeOfDay()}, {profile?.full_name || user?.email?.split('@')[0] || 'User'}
-            </h2>
-            <p className="text-muted-foreground">{dayName}, {date}</p>
+    <Card className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 border-0 shadow-sm overflow-hidden">
+      <CardContent className="p-6 relative">
+        <div className="absolute top-0 right-0 h-64 w-64 bg-health-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+        <div className="max-w-3xl mx-auto">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-white">
+                Good {timeOfDay}, {firstName}!
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                {quote}
+              </p>
+            </div>
             
-            {/* Show loading state while fetching data */}
-            {loading ? (
-              <div className="animate-pulse space-y-2">
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-40"></div>
-                <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
-              </div>
-            ) : (
-              <>
-                <p className="text-health-dark dark:text-white mt-2">
-                  <span className="font-medium">Today's health score:</span> {profile?.preferences?.health_score || 'N/A'}
-                </p>
-                <Progress value={profile?.preferences?.health_score ? parseInt(profile.preferences.health_score) : 0} className="h-2 mt-1" />
-              </>
-            )}
+            <div className="hidden md:block">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                <BarChart3 className="h-4 w-4 mr-2 text-health-primary" />
+                View Insights
+              </Button>
+            </div>
           </div>
           
-          <div className="flex gap-4 mt-2 md:mt-0">
-            <Card className="w-full md:w-36 border-0 bg-health-primary/10 dark:bg-health-primary/20">
-              <CardContent className="p-3 text-center">
-                <Trophy className="mx-auto text-health-primary mb-1" />
-                <p className="text-sm">{profile?.preferences?.streak || '0'}-day streak</p>
-                <p className="text-xs text-muted-foreground">Keep it up!</p>
-              </CardContent>
-            </Card>
-            <Card className="w-full md:w-36 border-0 bg-health-physical/10 dark:bg-health-physical/20">
-              <CardContent className="p-3 text-center">
-                <p className="font-bold text-lg">{profile?.preferences?.tasks_today || '0'}</p>
-                <p className="text-sm">Tasks today</p>
-                <p className="text-xs text-muted-foreground">{profile?.preferences?.tasks_completed || '0'} completed</p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <DailyInsight 
+              title="Today's Focus"
+              text="Complete your morning meditation session"
+              icon={<Lightbulb className="h-5 w-5 text-amber-500" />}
+              color="bg-amber-50 dark:bg-amber-950/40"
+              textColor="text-amber-600 dark:text-amber-400"
+              borderColor="border-amber-100 dark:border-amber-900/50"
+            />
+            <DailyInsight 
+              title="Streak"
+              text="10 consecutive days of activity!"
+              icon={<Trophy className="h-5 w-5 text-green-500" />}
+              color="bg-green-50 dark:bg-green-950/40"
+              textColor="text-green-600 dark:text-green-400"
+              borderColor="border-green-100 dark:border-green-900/50"
+            />
+            <DailyInsight 
+              title="Your Flow Tip"
+              text="Break complex tasks into smaller steps"
+              icon={<Sparkles className="h-5 w-5 text-indigo-500" />}
+              color="bg-indigo-50 dark:bg-indigo-950/40"
+              textColor="text-indigo-600 dark:text-indigo-400"
+              borderColor="border-indigo-100 dark:border-indigo-900/50"
+            />
           </div>
         </div>
       </CardContent>
@@ -89,10 +134,25 @@ export function WelcomeSection() {
   );
 }
 
-function getTimeOfDay() {
-  const hour = new Date().getHours();
-  
-  if (hour < 12) return "Morning";
-  if (hour < 17) return "Afternoon";
-  return "Evening";
+interface DailyInsightProps {
+  title: string;
+  text: string;
+  icon: React.ReactNode;
+  color: string;
+  textColor: string;
+  borderColor: string;
+}
+
+function DailyInsight({ title, text, icon, color, textColor, borderColor }: DailyInsightProps) {
+  return (
+    <div className={`${color} ${borderColor} rounded-lg border p-3 flex items-start gap-3`}>
+      <div className="rounded-full bg-white dark:bg-gray-800 p-2 border border-gray-100 dark:border-gray-700">
+        {icon}
+      </div>
+      <div>
+        <h3 className={`text-sm font-medium ${textColor}`}>{title}</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400">{text}</p>
+      </div>
+    </div>
+  );
 }
