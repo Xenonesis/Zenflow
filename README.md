@@ -1,5 +1,7 @@
 # Mental Wellbeing Dashboard
 
+![Version](https://img.shields.io/badge/version-2.1-blue)
+
 A comprehensive mental wellbeing tracking application that helps users monitor various aspects of their mental health and wellbeing including mood, sleep, exercise, meditation, journaling, and self-care activities.
 
 ## Features
