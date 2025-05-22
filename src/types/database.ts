@@ -1,3 +1,36 @@
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  completed: boolean;
+  date?: string;
+}
+
+export interface Preferences {
+  bio?: string;
+  health_score?: string;
+  streak?: string;
+  tasks_today?: string;
+  tasks_completed?: string;
+  personal_records?: Record<string, string>;
+  achievements?: Achievement[];
+  ai_settings?: {
+    ai_model?: string;
+    ai_api_key?: string;
+    temperature?: number;
+    max_tokens?: number;
+    model_provider?: string;
+    last_updated?: string;
+  };
+  google_calendar?: {
+    connected: boolean;
+    sync_workouts: boolean;
+    sync_health_events: boolean;
+    calendar_id: string;
+    last_updated?: string;
+  } | null;
+}
+
 export interface Profile {
   id: string;
   user_id: string;
@@ -8,7 +41,7 @@ export interface Profile {
   height?: number;
   weight?: number;
   gender?: string;
-  preferences?: Record<string, any>;
+  preferences?: Preferences;
   created_at: string;
   updated_at: string;
 }
@@ -74,4 +107,4 @@ export interface DatabaseResult<T> {
   error?: any;
   message?: string;
   warning?: boolean;
-} 
+}
