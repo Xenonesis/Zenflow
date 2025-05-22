@@ -4,20 +4,20 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion } from 'framer-motion';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth } from '@/components/auth/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Sparkles, ArrowRight } from 'lucide-react';
+import { FaGoogle } from 'react-icons/fa';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
   password: z.string().min(1, { message: 'Password is required' }),
 });
 
-// Animation variants
 const fadeIn = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { duration: 0.6 } }
@@ -29,14 +29,13 @@ const slideUp = {
 };
 
 export function SignInForm() {
-  const { signIn } = useAuth();
+  const { login, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(
-    location.state?.message || null
-  );
+  const [success, setSuccess] = useState<string | null>(location.state?.message || null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const from = location.state?.from?.pathname || '/dashboard';
 
@@ -54,23 +53,30 @@ export function SignInForm() {
     setIsLoading(true);
     
     try {
-      const { data, error } = await signIn(values.email, values.password);
-      
-      if (error) {
-        if (error.message?.includes('Invalid login credentials')) {
-          setError('The email or password you entered is incorrect. Please try again.');
-        } else {
-          setError(error.message || 'An error occurred during sign in. Please try again.');
-        }
-        return;
-      }
-      
+      await login(values.email, values.password);
       navigate(from);
     } catch (err) {
-      console.error('Sign in exception:', err);
-      setError('An error occurred during sign in. Please try again.');
+      const error = err as Error;
+      setError(error.message.includes('Invalid login credentials') 
+        ? 'The email or password you entered is incorrect. Please try again.' 
+        : error.message || 'An error occurred during sign in. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsGoogleLoading(true);
+    
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message || 'An error occurred during Google sign in. Please try again.');
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -117,6 +123,30 @@ export function SignInForm() {
                   </Alert>
                 </motion.div>
               )}
+              
+              <motion.div variants={slideUp}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 py-6 rounded-xl text-lg font-semibold transition-colors"
+                  onClick={handleGoogleSignIn}
+                  disabled={isGoogleLoading}
+                >
+                  <FaGoogle className="h-5 w-5 text-red-500" />
+                  {isGoogleLoading ? 'Signing in with Google...' : 'Continue with Google'}
+                </Button>
+              </motion.div>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-300 dark:border-slate-600"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white dark:bg-slate-800 px-2 text-slate-500 dark:text-slate-400">
+                    Or continue with
+                  </span>
+                </div>
+              </div>
               
               <motion.div variants={slideUp}>
                 <FormField

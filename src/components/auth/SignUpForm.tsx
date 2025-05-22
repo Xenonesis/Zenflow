@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Sparkles, ArrowRight } from 'lucide-react';
+import { FaGoogle } from 'react-icons/fa';
 
 const formSchema = z.object({
   fullName: z.string().min(2, { message: 'Full name is required' }),
@@ -24,7 +25,6 @@ const formSchema = z.object({
   path: ["confirmPassword"],
 });
 
-// Animation variants
 const fadeIn = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { duration: 0.6 } }
@@ -36,10 +36,13 @@ const slideUp = {
 };
 
 export function SignUpForm() {
-  const { signUp } = useAuth();
+  const { register, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(location.state?.message || null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -53,31 +56,43 @@ export function SignUpForm() {
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setError(null);
+    setSuccess(null);
     setIsLoading(true);
-    
+
     try {
-      const { error } = await signUp(values.email, values.password, values.fullName);
-      
-      if (error) {
-        if (error.message?.includes('User already registered')) {
-          setError('An account with this email already exists. Please sign in instead.');
-        } else if (error.message?.includes('rate limit')) {
-          setError('Too many attempts. Please try again in a few minutes.');
-        } else {
-          setError(error.message || 'An error occurred during sign up. Please try again.');
-        }
-        return;
-      }
-      
-      // Success - redirect to sign in page
-      navigate('/signin', { state: { 
-        message: 'Account created successfully! Please sign in with your new credentials.' 
-      }});
+      await register(values.fullName, values.email, values.password);
+      navigate('/signin', {
+        state: {
+          message: 'Account created successfully! Please sign in with your new credentials.',
+        },
+      });
     } catch (err) {
-      console.error('Sign up exception:', err);
-      setError('An unexpected error occurred. Please try again later.');
+      const error = err as Error;
+      if (error.message.includes('User already registered')) {
+        setError('An account with this email already exists. Please sign in instead.');
+      } else if (error.message.includes('rate limit')) {
+        setError('Too many attempts. Please try again in a few minutes.');
+      } else {
+        setError(error.message || 'An error occurred during sign up. Please try again.');
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsGoogleLoading(true);
+
+    try {
+      await signInWithGoogle();
+      // Note: Actual redirect is handled by auth state change listener in auth-context.tsx
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message || 'An error occurred during Google sign-in. Please try again.');
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -92,16 +107,16 @@ export function SignUpForm() {
         <div className="absolute top-0 right-0 h-48 w-48 bg-gradient-to-br from-indigo-500/30 to-teal-400/30 rounded-full blur-3xl animate-pulse opacity-70"></div>
         <div className="absolute bottom-0 left-0 h-48 w-48 bg-gradient-to-br from-purple-500/30 to-pink-400/30 rounded-full blur-3xl animate-pulse opacity-70"></div>
         <div className="h-1.5 w-full bg-gradient-to-r from-indigo-600 via-teal-500 to-purple-600 bg-300% animate-gradient"></div>
-        
+
         <CardHeader>
           <CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-teal-500 to-purple-600 bg-300% animate-gradient">
             Join ZenFlow
           </CardTitle>
           <CardDescription className="text-slate-600 dark:text-slate-200 font-light">
-            Create your personalized dashboard
+            Create your personalized health dashboard
           </CardDescription>
         </CardHeader>
-        
+
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -112,7 +127,39 @@ export function SignUpForm() {
                   </Alert>
                 </motion.div>
               )}
-              
+
+              {success && (
+                <motion.div variants={slideUp}>
+                  <Alert className="bg-emerald-100/80 dark:bg-emerald-900/50 border-emerald-200 dark:border-emerald-700/50 text-emerald-700 dark:text-emerald-200 backdrop-blur-md">
+                    <AlertDescription>{success}</AlertDescription>
+                  </Alert>
+                </motion.div>
+              )}
+
+              <motion.div variants={slideUp}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 py-6 rounded-xl text-lg font-semibold transition-colors"
+                  onClick={handleGoogleSignIn}
+                  disabled={isGoogleLoading}
+                >
+                  <FaGoogle className="h-5 w-5 text-red-500" />
+                  {isGoogleLoading ? 'Signing up with Google...' : 'Sign Up with Google'}
+                </Button>
+              </motion.div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-300 dark:border-slate-600"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white dark:bg-slate-800 px-2 text-slate-500 dark:text-slate-400">
+                    Or sign up with email
+                  </span>
+                </div>
+              </div>
+
               <motion.div variants={slideUp}>
                 <FormField
                   control={form.control}
@@ -121,9 +168,9 @@ export function SignUpForm() {
                     <FormItem>
                       <FormLabel className="text-sm font-semibold text-slate-800 dark:text-white">Full Name</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="John Doe" 
-                          {...field} 
+                        <Input
+                          placeholder="John Doe"
+                          {...field}
                           className="bg-white/10 dark:bg-indigo-800/10 border-white/20 dark:border-indigo-700/20 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-teal-500 backdrop-blur-md"
                         />
                       </FormControl>
@@ -132,7 +179,7 @@ export function SignUpForm() {
                   )}
                 />
               </motion.div>
-              
+
               <motion.div variants={slideUp}>
                 <FormField
                   control={form.control}
@@ -141,9 +188,9 @@ export function SignUpForm() {
                     <FormItem>
                       <FormLabel className="text-sm font-semibold text-slate-800 dark:text-white">Email</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="your.email@example.com" 
-                          {...field} 
+                        <Input
+                          placeholder="your.email@example.com"
+                          {...field}
                           className="bg-white/10 dark:bg-indigo-800/10 border-white/20 dark:border-indigo-700/20 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-teal-500 backdrop-blur-md"
                         />
                       </FormControl>
@@ -152,7 +199,7 @@ export function SignUpForm() {
                   )}
                 />
               </motion.div>
-              
+
               <motion.div variants={slideUp}>
                 <FormField
                   control={form.control}
@@ -161,10 +208,10 @@ export function SignUpForm() {
                     <FormItem>
                       <FormLabel className="text-sm font-semibold text-slate-800 dark:text-white">Password</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="password" 
-                          placeholder="••••••••" 
-                          {...field} 
+                        <Input
+                          type="password"
+                          placeholder="••••••••"
+                          {...field}
                           className="bg-white/10 dark:bg-indigo-800/10 border-white/20 dark:border-indigo-700/20 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-teal-500 backdrop-blur-md"
                         />
                       </FormControl>
@@ -173,7 +220,7 @@ export function SignUpForm() {
                   )}
                 />
               </motion.div>
-              
+
               <motion.div variants={slideUp}>
                 <FormField
                   control={form.control}
@@ -182,10 +229,10 @@ export function SignUpForm() {
                     <FormItem>
                       <FormLabel className="text-sm font-semibold text-slate-800 dark:text-white">Confirm Password</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="password" 
-                          placeholder="••••••••" 
-                          {...field} 
+                        <Input
+                          type="password"
+                          placeholder="••••••••"
+                          {...field}
                           className="bg-white/10 dark:bg-indigo-800/10 border-white/20 dark:border-indigo-700/20 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-teal-500 backdrop-blur-md"
                         />
                       </FormControl>
@@ -194,10 +241,10 @@ export function SignUpForm() {
                   )}
                 />
               </motion.div>
-              
+
               <motion.div variants={slideUp}>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full relative bg-gradient-to-r from-indigo-600 to-teal-500 text-white py-6 rounded-xl text-lg font-semibold overflow-hidden group shadow-lg shadow-indigo-500/40 hover:shadow-2xl transition-all duration-300"
                   disabled={isLoading}
                 >
@@ -220,16 +267,16 @@ export function SignUpForm() {
             </form>
           </Form>
         </CardContent>
-        
+
         <CardFooter className="flex justify-center">
-          <motion.p 
+          <motion.p
             variants={slideUp}
             className="text-sm text-slate-500 dark:text-slate-400 font-light"
           >
             Already have an account?{' '}
-            <Button 
-              variant="link" 
-              className="p-0 text-indigo-600 dark:text-indigo-100 hover:text-indigo-500 dark:hover:text-indigo-200 font-semibold" 
+            <Button
+              variant="link"
+              className="p-0 text-indigo-600 dark:text-indigo-100 hover:text-indigo-500 dark:hover:text-indigo-200 font-semibold"
               onClick={() => navigate('/signin')}
             >
               Sign in
