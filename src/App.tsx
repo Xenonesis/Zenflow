@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,12 +8,12 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { AuthProvider } from "@/lib/auth-context";
 import { ErrorBoundary } from "@/components/error/ErrorBoundary";
 import { useAuth } from "./lib/auth-context";
-import { Spinner } from "./components/ui/spinner";
-import { useEffect } from "react";
-import { initNotifications } from "@/services/notifications";
-import { prefetchService } from "@/services/prefetch.service";
+import { motion } from "framer-motion";
+import { Sparkles } from "lucide-react";
 import { lazyLoad } from "@/lib/lazy-load";
 import queryClient from "@/lib/query-client";
+import { initNotifications } from "@/services/notifications";
+import { prefetchService } from "@/services/prefetch.service";
 
 // Lazy load page components
 const Index = lazyLoad(() => import("./pages/Index"), { preload: true });
@@ -33,21 +34,108 @@ const DataManager = lazyLoad(() => import("./pages/DataManager"));
 const Landing = lazyLoad(() => import("./pages/Landing"), { preload: true });
 const SetupPage = lazyLoad(() => import("./pages/SetupPage"));
 
+// Custom Loader Component
+const CustomLoader = () => {
+  return (
+    <div className="relative flex items-center justify-center h-screen bg-gradient-to-b from-indigo-50 to-white dark:from-slate-900 dark:to-slate-800 overflow-hidden">
+      {/* Background Gradient and Grid */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-600/40 via-teal-500/20 to-transparent opacity-90 dark:from-indigo-700/30 dark:via-teal-600/15"></div>
+      <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.7))]"></div>
+      
+      {/* Particle Animation */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {[...Array(15)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute h-2 w-2 bg-white/30 rounded-full"
+            initial={{
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
+              scale: Math.random() * 0.5 + 0.5
+            }}
+            animate={{
+              y: [0, -window.innerHeight],
+              opacity: [0, 1, 0],
+              transition: {
+                duration: Math.random() * 8 + 4,
+                repeat: Infinity,
+                delay: Math.random() * 4,
+                ease: "linear"
+              }
+            }}
+          />
+        ))}
+      </div>
+      
+      {/* Floating Decorative Elements */}
+      <motion.div
+        className="absolute top-20 left-20 h-16 w-16 bg-gradient-to-br from-indigo-400/50 to-teal-300/50 rounded-full blur-xl"
+        animate={{
+          y: [-10, 10, -10],
+          transition: { duration: 3, repeat: Infinity, ease: "easeInOut" }
+        }}
+      />
+      <motion.div
+        className="absolute bottom-20 right-20 h-20 w-20 bg-gradient-to-br from-purple-400/50 to-pink-300/50 rounded-full blur-xl"
+        animate={{
+          y: [-10, 10, -10],
+          transition: { duration: 3, repeat: Infinity, ease: "easeInOut" }
+        }}
+      />
+      
+      {/* Glassmorphism Card */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+        className="relative text-center bg-white/20 dark:bg-indigo-900/50 p-8 rounded-2xl shadow-2xl border border-white/30 dark:border-indigo-700/50 backdrop-blur-md max-w-md w-full"
+      >
+        <div className="absolute top-0 right-0 h-32 w-32 bg-gradient-to-br from-indigo-500/30 to-teal-400/30 rounded-full blur-3xl animate-pulse opacity-70"></div>
+        <div className="absolute bottom-0 left-0 h-32 w-32 bg-gradient-to-br from-purple-500/30 to-pink-400/30 rounded-full blur-3xl animate-pulse opacity-70"></div>
+        
+        <motion.div
+          className="h-16 w-16 mx-auto mb-6 bg-gradient-to-r from-indigo-600 to-teal-500 rounded-full flex items-center justify-center"
+          animate={{
+            scale: [1, 1.1, 1],
+            transition: { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
+          }}
+        >
+          <Sparkles className="h-8 w-8 text-white animate-pulse" />
+        </motion.div>
+        
+        <h2 className="text-2xl font-semibold text-slate-800 dark:text-white mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-teal-500 to-purple-600 bg-300% animate-gradient">
+          Preparing Your ZenFlow Experience
+        </h2>
+        <p className="text-slate-600 dark:text-slate-200 mb-6">
+          Loading your personalized dashboard...
+        </p>
+        
+        {/* Progress Bar */}
+        <div className="relative h-2 w-full bg-white/20 dark:bg-indigo-900/50 rounded-full overflow-hidden">
+          <motion.div
+            className="absolute h-full bg-gradient-to-r from-indigo-600 via-teal-500 to-purple-600"
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+          />
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 // Protected route component that uses our Supabase auth
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading, session } = useAuth();
   const location = useLocation();
   
-  // Show a loading indicator while auth state is being determined
+  // Show custom loading screen while auth state is being determined
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="mb-4">Loading authentication...</div>
-          <Spinner size="lg" />
-        </div>
-      </div>
-    );
+    return <CustomLoader />;
   }
   
   // Redirect to signin if user is not authenticated
@@ -60,23 +148,27 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return (
     <ErrorBoundary fallback={
       <div className="flex flex-col items-center justify-center h-screen p-4">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full">
-          <h2 className="text-xl font-semibold text-red-700 mb-4">Something went wrong</h2>
-          <p className="text-red-600 mb-4">
+        <div className="bg-white/20 dark:bg-indigo-900/50 border border-white/30 dark:border-indigo-700/50 rounded-2xl p-6 max-w-md w-full backdrop-blur-md">
+          <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-teal-500 to-purple-600 bg-300% animate-gradient">
+            Something went wrong
+          </h2>
+          <p className="text-slate-600 dark:text-slate-200 mb-4">
             There was an error loading this page. This could be due to a temporary issue.
           </p>
           <div className="flex space-x-4">
             <button
               onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="relative bg-gradient-to-r from-indigo-600 to-teal-500 text-white py-3 px-6 rounded-xl text-sm font-semibold overflow-hidden group shadow-md hover:shadow-lg transition-all duration-300"
             >
-              Reload Page
+              <span className="absolute inset-0 bg-gradient-to-r from-indigo-700 via-teal-600 to-purple-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+              <span className="relative">Reload Page</span>
             </button>
             <button
               onClick={() => window.location.href = '/test'}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              className="relative border-white/40 bg-white/20 dark:bg-indigo-900/50 text-white dark:text-indigo-100 py-3 px-6 rounded-xl text-sm font-semibold overflow-hidden group shadow-md backdrop-blur-md hover:shadow-lg transition-all duration-300"
             >
-              Go to Test Page
+              <span className="absolute inset-0 bg-white/30 dark:bg-indigo-800/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+              <span className="relative">Go to Test Page</span>
             </button>
           </div>
         </div>
@@ -92,14 +184,7 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
   
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="mb-4">Loading...</div>
-          <Spinner size="lg" />
-        </div>
-      </div>
-    );
+    return <CustomLoader />;
   }
   
   if (user) {
