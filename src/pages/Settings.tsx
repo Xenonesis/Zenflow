@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  User, 
+  User as UserIcon, 
   Bell, 
   Lock, 
   Key, 
@@ -45,7 +45,8 @@ import {
   Sliders,
   AlertCircle,
   Upload,
-  Camera
+  Camera,
+  Calendar,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { fileStorage } from "@/lib/supabase";
@@ -53,8 +54,9 @@ import { getProfile, updateProfile } from "@/services/database";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Achievement } from "@/components/health/physical/AchievementBadges";
-import { UserProfile as UserProfileType } from "@/types/database";
+import { Profile as UserProfileType } from "@/types/database";
 import { supabase } from "@/lib/supabase";
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 const Settings = () => {
   const [healthMode, setHealthMode] = useState<"physical" | "mental">("physical");
@@ -132,13 +134,19 @@ const Settings = () => {
     }
   ]);
   
+  // Google Calendar Collaboration States
+  const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
+  const [syncWorkouts, setSyncWorkouts] = useState(true);
+  const [syncHealthEvents, setSyncHealthEvents] = useState(true);
+  const [calendarId, setCalendarId] = useState<string>("primary");
+  
   // Profile image upload states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Profile data loading states
-  const { user } = useAuth();
+  const { user, signInWithGoogle } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saveLoading, setSaveLoading] = useState(false);
   const [profile, setProfile] = useState<UserProfileType | null>(null);
@@ -194,7 +202,7 @@ const Settings = () => {
       setError(null);
       
       try {
-        const { success, data, error } = await getProfile(user);
+        const { success, data, error } = await getProfile(user as SupabaseUser);
         
         if (!success || error) {
           console.error('Error loading profile:', error);
@@ -204,7 +212,6 @@ const Settings = () => {
         
         if (data) {
           setProfile(data);
-          // Only update state if the field has a value to avoid overwriting existing state with undefined
           if (data.full_name) setName(data.full_name);
           if (user.email) setEmail(user.email);
           if (data.preferences?.bio) setBio(data.preferences.bio);
@@ -214,14 +221,12 @@ const Settings = () => {
           if (data.weight) setWeight(data.weight);
           if (data.gender) setGender(data.gender);
           
-          // Load health statistics if available in preferences
           if (data.preferences) {
             if (data.preferences.health_score) setHealthScore(data.preferences.health_score);
             if (data.preferences.streak) setStreak(data.preferences.streak);
             if (data.preferences.tasks_today) setTasksToday(data.preferences.tasks_today);
             if (data.preferences.tasks_completed) setTasksCompleted(data.preferences.tasks_completed);
             
-            // Load personal records if available
             if (data.preferences.personal_records) {
               setPersonalRecords(prev => ({
                 ...prev,
@@ -229,25 +234,28 @@ const Settings = () => {
               }));
             }
             
-            // Load achievements if available
             if (data.preferences.achievements) {
               setAchievements(data.preferences.achievements);
             }
             
-            // Load AI settings if available
             if (data.preferences.ai_settings) {
               const aiSettings = data.preferences.ai_settings;
-              
               if (aiSettings.ai_model) {
-                // Find the provider for this model
                 const provider = getModelProvider(aiSettings.ai_model);
                 setModelProvider(provider);
                 setSelectedAiModel(aiSettings.ai_model);
               }
-              
               if (aiSettings.ai_api_key) setAiApiKey(aiSettings.ai_api_key);
               if (aiSettings.temperature !== undefined) setTemperature(aiSettings.temperature);
               if (aiSettings.max_tokens !== undefined) setMaxTokens(aiSettings.max_tokens);
+            }
+            
+            if (data.preferences.google_calendar) {
+              const calendarSettings = data.preferences.google_calendar;
+              setGoogleCalendarConnected(!!calendarSettings.connected);
+              setSyncWorkouts(calendarSettings.sync_workouts ?? true);
+              setSyncHealthEvents(calendarSettings.sync_health_events ?? true);
+              setCalendarId(calendarSettings.calendar_id ?? "primary");
             }
           }
         }
@@ -262,12 +270,132 @@ const Settings = () => {
     loadProfile();
   }, [user]);
   
+  // Google Calendar Integration Handlers
+  const handleConnectGoogleCalendar = async () => {
+    if (!user) return;
+    
+    setSaveLoading(true);
+    try {
+      await signInWithGoogle({
+        scopes: 'https://www.googleapis.com/auth/calendar',
+        redirectTo: `${window.location.origin}/settings?tab=collaboration`
+      });
+      toast({
+        title: "Google Calendar Connected",
+        description: "Your Google Calendar has been successfully connected.",
+      });
+    } catch (err) {
+      console.error('Failed to connect Google Calendar:', err);
+      toast({
+        title: "Connection Failed",
+        description: `Could not connect to Google Calendar: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        variant: "destructive",
+      });
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const handleDisconnectGoogleCalendar = async () => {
+    if (!user) return;
+    
+    setSaveLoading(true);
+    try {
+      const { data: currentProfile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('preferences')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      
+      const updatedPreferences = {
+        ...currentProfile?.preferences,
+        google_calendar: null
+      };
+      
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ preferences: updatedPreferences })
+        .eq('user_id', user.id);
+      
+      if (updateError) throw updateError;
+      
+      setGoogleCalendarConnected(false);
+      setSyncWorkouts(true);
+      setSyncHealthEvents(true);
+      setCalendarId("primary");
+      
+      toast({
+        title: "Google Calendar Disconnected",
+        description: "Your Google Calendar integration has been removed.",
+      });
+    } catch (err) {
+      console.error('Failed to disconnect Google Calendar:', err);
+      toast({
+        title: "Disconnection Failed",
+        description: `Could not disconnect Google Calendar: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        variant: "destructive",
+      });
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const handleSaveCalendarSettings = async () => {
+    if (!user) return;
+    
+    setSaveLoading(true);
+    try {
+      const calendarSettings = {
+        connected: googleCalendarConnected,
+        sync_workouts: syncWorkouts,
+        sync_health_events: syncHealthEvents,
+        calendar_id: calendarId,
+        last_updated: new Date().toISOString()
+      };
+      
+      const { data: currentProfile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('preferences')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      
+      const updatedPreferences = {
+        ...currentProfile?.preferences,
+        google_calendar: calendarSettings
+      };
+      
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ preferences: updatedPreferences })
+        .eq('user_id', user.id);
+      
+      if (updateError) throw updateError;
+      
+      toast({
+        title: "Calendar Settings Saved",
+        description: "Your Google Calendar settings have been updated.",
+      });
+    } catch (err) {
+      console.error('Failed to save calendar settings:', err);
+      toast({
+        title: "Settings Update Failed",
+        description: `Could not save calendar settings: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        variant: "destructive",
+      });
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+  
   // Profile image upload handlers
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     const acceptedImageTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     if (!acceptedImageTypes.includes(file.type)) {
       toast({
@@ -278,7 +406,6 @@ const Settings = () => {
       return;
     }
 
-    // Validate file size (2MB max)
     const maxSize = 2 * 1024 * 1024;
     if (file.size > maxSize) {
       toast({
@@ -343,7 +470,6 @@ const Settings = () => {
     setSaveLoading(true);
     
     try {
-      // Validate if the selected model exists in the supported models
       let isValidModel = false;
       for (const models of Object.values(supportedModels)) {
         if (models.some(model => model.value === selectedAiModel)) {
@@ -356,7 +482,6 @@ const Settings = () => {
         throw new Error("Invalid AI model selected");
       }
       
-      // Prepare AI settings to save in profile preferences
       const aiSettings = {
         ai_model: selectedAiModel,
         ai_api_key: aiApiKey,
@@ -366,7 +491,6 @@ const Settings = () => {
         last_updated: new Date().toISOString()
       };
       
-      // Get current profile data first
       const { data: currentProfile, error: fetchError } = await supabase
         .from('profiles')
         .select('preferences')
@@ -377,13 +501,11 @@ const Settings = () => {
         throw fetchError;
       }
       
-      // Merge with existing preferences
       const updatedPreferences = {
         ...currentProfile?.preferences,
         ai_settings: aiSettings
       };
       
-      // Update profile in database - remove email as it doesn't exist in the profiles table
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ 
@@ -425,7 +547,6 @@ const Settings = () => {
     setSaveLoading(true);
     
     try {
-      // First upload image if there's a selected file
       let avatarUrl = profile?.avatar_url;
       
       if (selectedFile) {
@@ -435,7 +556,6 @@ const Settings = () => {
         }
       }
       
-      // Prepare profile update data
       const updates = {
         full_name: name || null,
         age: age || null,
@@ -458,14 +578,11 @@ const Settings = () => {
       
       console.log('Saving account settings with data:', JSON.stringify(updates, null, 2));
       
-      // Update profile in database
-      const { success, data, error } = await updateProfile(user, updates);
+      const { success, data, error } = await updateProfile(user as SupabaseUser, updates);
       
       if (!success || error) {
         console.error('Profile update failed:', error);
-        // Extract error message
         const errorMessage = error.message || 'Unknown error occurred';
-          
         toast({
           title: "Update Failed",
           description: `Failed to update profile: ${errorMessage}`,
@@ -481,7 +598,6 @@ const Settings = () => {
           description: "Your account information has been updated.",
         });
       } else {
-        // Handle case where data is null but no error
         toast({
           title: "Warning",
           description: "Profile may not have been updated correctly.",
@@ -517,10 +633,8 @@ const Settings = () => {
     });
   };
 
-  // Update when provider changes
   const handleProviderChange = (newProvider: string) => {
     setModelProvider(newProvider);
-    // Auto-select the first model from the new provider
     const firstModelInProvider = supportedModels[newProvider as keyof typeof supportedModels][0];
     setSelectedAiModel(firstModelInProvider.value);
   };
@@ -536,11 +650,12 @@ const Settings = () => {
             <p className="text-muted-foreground mb-6">Manage your account and application preferences</p>
 
             <Tabs defaultValue="account" className="w-full">
-              <TabsList className="grid grid-cols-4 mb-8 max-w-md">
+              <TabsList className="grid grid-cols-5 mb-8 max-w-lg">
                 <TabsTrigger value="account">Account</TabsTrigger>
                 <TabsTrigger value="general">General</TabsTrigger>
                 <TabsTrigger value="ai">AI</TabsTrigger>
                 <TabsTrigger value="privacy">Privacy</TabsTrigger>
+                <TabsTrigger value="collaboration">Collaboration</TabsTrigger>
               </TabsList>
 
               <TabsContent value="account" className="space-y-6">
@@ -591,7 +706,7 @@ const Settings = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center">
-                      <User className="mr-2 h-5 w-5 text-health-primary" />
+                      <UserIcon className="mr-2 h-5 w-5 text-health-primary" />
                       Personal Information
                     </CardTitle>
                     <CardDescription>
@@ -599,7 +714,6 @@ const Settings = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    {/* Avatar and Basic Info */}
                     <div className="flex flex-col sm:flex-row items-center gap-6 pb-4">
                       <div className="flex flex-col items-center">
                         <Avatar className="h-24 w-24 mb-2 relative group cursor-pointer" onClick={handleUploadClick}>
@@ -666,7 +780,6 @@ const Settings = () => {
                       </div>
                     </div>
 
-                    {/* Bio */}
                     <div className="space-y-2">
                       <Label htmlFor="bio">Bio</Label>
                       <textarea 
@@ -679,7 +792,6 @@ const Settings = () => {
                       ></textarea>
                     </div>
 
-                    {/* Health Information */}
                     <div>
                       <h3 className="text-lg font-medium mb-4">Health Information</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -756,7 +868,6 @@ const Settings = () => {
                       </div>
                     </div>
 
-                    {/* Health Statistics */}
                     <div className="pt-6 border-t">
                       <h3 className="text-lg font-medium mb-4">Health Statistics</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -818,7 +929,6 @@ const Settings = () => {
                       </p>
                     </div>
                     
-                    {/* Personal Records */}
                     <div className="pt-6 border-t">
                       <h3 className="text-lg font-medium mb-4">Personal Records</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -859,7 +969,6 @@ const Settings = () => {
                       </div>
                     </div>
 
-                    {/* Achievements */}
                     <div className="pt-6 border-t">
                       <h3 className="text-lg font-medium mb-4">Achievements</h3>
                       <div className="space-y-3">
@@ -898,7 +1007,7 @@ const Settings = () => {
                                   newAchievements[index] = {
                                     ...achievement,
                                     completed: checked,
-                                    date: checked && !achievement.date ? new Date().toISOString().split('T')[0] : achievement.date
+                                    date: checked ? new Date().toISOString().split('T')[0] : undefined
                                   };
                                   setAchievements(newAchievements);
                                 }}
@@ -908,139 +1017,79 @@ const Settings = () => {
                           </div>
                         ))}
                       </div>
-                      <div className="mt-4">
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => {
-                            const name = prompt("Achievement name:");
-                            if (name && name.trim()) {
-                              const description = prompt("Achievement description:");
-                              if (description && description.trim()) {
-                                setAchievements(prev => [
-                                  ...prev,
-                                  {
-                                    id: `${Date.now()}`,
-                                    name: name.trim(),
-                                    description: description.trim(),
-                                    completed: false
-                                  }
-                                ]);
-                              }
-                            }
-                          }}
-                          disabled={loading}
-                        >
-                          + Add New Achievement
-                        </Button>
-                      </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex justify-end">
+                  <CardFooter>
                     <Button 
-                      type="button" 
-                      onClick={handleSaveAccountSettings}
+                      onClick={handleSaveAccountSettings} 
                       disabled={saveLoading || loading}
-                      className="flex items-center gap-2"
+                      className="ml-auto"
                     >
                       {saveLoading ? (
                         <>
-                          <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
                           Saving...
                         </>
                       ) : (
                         <>
-                          <Save className="h-4 w-4" />
+                          <Save className="mr-2 h-4 w-4" />
                           Save Changes
                         </>
                       )}
                     </Button>
                   </CardFooter>
                 </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <Lock className="mr-2 h-5 w-5 text-health-primary" />
-                      Password
-                    </CardTitle>
-                    <CardDescription>
-                      Update your password to keep your account secure
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="current-password">Current Password</Label>
-                      <Input id="current-password" type="password" disabled={loading} />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="new-password">New Password</Label>
-                        <Input id="new-password" type="password" disabled={loading} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="confirm-password">Confirm New Password</Label>
-                        <Input id="confirm-password" type="password" disabled={loading} />
-                      </div>
-                    </div>
-                  </CardContent>
-                  <CardFooter>
-                    <Button variant="outline" className="ml-auto mr-2" disabled={loading}>Cancel</Button>
-                    <Button disabled={loading}>Update Password</Button>
-                  </CardFooter>
-                </Card>
               </TabsContent>
 
-              <TabsContent value="general" className="space-y-6">
+              <TabsContent value="general">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center">
-                      <Bell className="mr-2 h-5 w-5 text-health-primary" />
-                      Notifications
+                      <Sliders className="mr-2 h-5 w-5 text-health-primary" />
+                      General Settings
                     </CardTitle>
                     <CardDescription>
-                      Configure how you receive notifications from ZenFlow
+                      Configure your application preferences
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="email-notifications">Email Notifications</Label>
+                      <div className="space-y-1">
+                        <Label>Email Notifications</Label>
                         <p className="text-sm text-muted-foreground">
-                          Receive updates, reminders, and reports via email
+                          Receive email updates about your account and health progress
                         </p>
                       </div>
-                      <Switch 
-                        id="email-notifications" 
+                      <Switch
                         checked={emailNotifications}
                         onCheckedChange={setEmailNotifications}
                         disabled={loading}
                       />
                     </div>
                     <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="push-notifications">Push Notifications</Label>
+                      <div className="space-y-1">
+                        <Label>Push Notifications</Label>
                         <p className="text-sm text-muted-foreground">
-                          Receive notifications on your device when using the app
+                          Get push notifications for reminders and updates
                         </p>
                       </div>
-                      <Switch 
-                        id="push-notifications" 
+                      <Switch
                         checked={pushNotifications}
                         onCheckedChange={setPushNotifications}
                         disabled={loading}
                       />
                     </div>
                     <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="dark-mode">Dark Mode</Label>
+                      <div className="space-y-1">
+                        <Label>Dark Mode</Label>
                         <p className="text-sm text-muted-foreground">
-                          Toggle between dark and light theme
+                          Toggle between light and dark theme
                         </p>
                       </div>
-                      <Switch 
-                        id="dark-mode" 
+                      <Switch
                         checked={darkMode}
                         onCheckedChange={handleToggleDarkMode}
                         disabled={loading}
@@ -1048,152 +1097,150 @@ const Settings = () => {
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Button onClick={handleSaveGeneralSettings} className="ml-auto flex items-center gap-2" disabled={loading}>
-                      <Save className="h-4 w-4" />
-                      Save Preferences
+                    <Button 
+                      onClick={handleSaveGeneralSettings}
+                      disabled={saveLoading || loading}
+                      className="ml-auto"
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
                     </Button>
                   </CardFooter>
                 </Card>
               </TabsContent>
 
-              <TabsContent value="ai" className="space-y-6">
+              <TabsContent value="ai">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center">
                       <Brain className="mr-2 h-5 w-5 text-health-primary" />
-                      AI Configuration
+                      AI Settings
                     </CardTitle>
                     <CardDescription>
-                      Configure AI model settings for personalized health insights
+                      Configure AI model preferences for health recommendations
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-6">
                     <div className="space-y-2">
-                      <Label htmlFor="ai-provider">AI Provider</Label>
-                      <Select value={modelProvider} onValueChange={handleProviderChange} disabled={loading}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select AI provider" />
+                      <Label htmlFor="model-provider">Model Provider</Label>
+                      <Select 
+                        value={modelProvider} 
+                        onValueChange={handleProviderChange}
+                        disabled={loading}
+                      >
+                        <SelectTrigger id="model-provider">
+                          <SelectValue placeholder="Select a provider" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="openai">OpenAI</SelectItem>
-                          <SelectItem value="anthropic">Anthropic</SelectItem>
-                          <SelectItem value="google">Google</SelectItem>
-                          <SelectItem value="mistral">Mistral AI</SelectItem>
-                          <SelectItem value="other">Other Providers</SelectItem>
+                          <SelectGroup>
+                            <SelectLabel>Providers</SelectLabel>
+                            {Object.keys(supportedModels).map(provider => (
+                              <SelectItem key={provider} value={provider}>
+                                {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
                         </SelectContent>
                       </Select>
                     </div>
-
                     <div className="space-y-2">
                       <Label htmlFor="ai-model">AI Model</Label>
                       <Select 
                         value={selectedAiModel} 
-                        onValueChange={setSelectedAiModel} 
+                        onValueChange={setSelectedAiModel}
                         disabled={loading}
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select AI model" />
+                        <SelectTrigger id="ai-model">
+                          <SelectValue placeholder="Select a model" />
                         </SelectTrigger>
                         <SelectContent>
-                          {supportedModels[modelProvider as keyof typeof supportedModels]?.map(model => (
-                            <SelectItem key={model.value} value={model.value}>{model.label}</SelectItem>
-                          ))}
+                          <SelectGroup>
+                            <SelectLabel>Models</SelectLabel>
+                            {supportedModels[modelProvider as keyof typeof supportedModels].map(model => (
+                              <SelectItem key={model.value} value={model.value}>
+                                {model.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground">
-                        The selected model will be used for health insights and recommendations.
-                      </p>
                     </div>
-
                     <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <Label htmlFor="api-key">API Key</Label>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
+                      <Label htmlFor="api-key">API Key</Label>
+                      <div className="relative">
+                        <Input
+                          id="api-key"
+                          type={showApiKey ? "text" : "password"}
+                          value={aiApiKey}
+                          onChange={(e) => setAiApiKey(e.target.value)}
+                          className="pr-10"
+                          disabled={loading}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3"
                           onClick={() => setShowApiKey(!showApiKey)}
-                          className="h-4 w-4"
                           disabled={loading}
                         >
                           {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
                       </div>
-                      <Input 
-                        id="api-key" 
-                        type={showApiKey ? "text" : "password"} 
-                        value={aiApiKey}
-                        onChange={(e) => setAiApiKey(e.target.value)}
+                      <p className="text-xs text-muted-foreground">
+                        Enter your API key for the selected provider
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="temperature">Temperature</Label>
+                      <Input
+                        id="temperature"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="2"
+                        value={temperature}
+                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
                         disabled={loading}
                       />
                       <p className="text-xs text-muted-foreground">
-                        Your API key is stored securely and never shared.
+                        Controls randomness (0.0-2.0). Lower values make responses more focused.
                       </p>
                     </div>
-
                     <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <Label htmlFor="temperature">Temperature: {temperature}</Label>
-                        <span className="text-sm text-muted-foreground">
-                          {temperature < 0.4 ? "More focused" : temperature > 0.7 ? "More creative" : "Balanced"}
-                        </span>
-                      </div>
-                      <Input 
-                        id="temperature" 
-                        type="range" 
-                        min="0" 
-                        max="1" 
-                        step="0.1" 
-                        value={temperature}
-                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                        className="cursor-pointer"
-                        disabled={loading}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="max-tokens">Max Response Length: {maxTokens} tokens</Label>
-                      <Input 
-                        id="max-tokens" 
-                        type="range" 
-                        min="500" 
-                        max="4000" 
-                        step="100" 
+                      <Label htmlFor="max-tokens">Max Tokens</Label>
+                      <Input
+                        id="max-tokens"
+                        type="number"
+                        min="100"
+                        max="8000"
                         value={maxTokens}
                         onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-                        className="cursor-pointer"
                         disabled={loading}
                       />
-                    </div>
-
-                    <div className="flex items-center justify-between pt-4">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="ai-enabled" className="cursor-pointer">Health Insights</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Allow AI to analyze your health data and provide personalized insights
-                        </p>
-                      </div>
-                      <Switch id="ai-enabled" defaultChecked disabled={loading} />
+                      <p className="text-xs text-muted-foreground">
+                        Maximum number of tokens in the response (100-8000)
+                      </p>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex justify-between">
-                    <div className="flex items-center text-sm text-muted-foreground">
-                      <Sparkles className="mr-1 h-3 w-3" />
-                      Using AI responsibly for better health
-                    </div>
+                  <CardFooter>
                     <Button 
-                      onClick={handleSaveAiSettings} 
-                      className="flex items-center gap-2" 
-                      disabled={loading || saveLoading}
+                      onClick={handleSaveAiSettings}
+                      disabled={saveLoading || loading}
+                      className="ml-auto"
                     >
                       {saveLoading ? (
                         <>
-                          <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
                           Saving...
                         </>
                       ) : (
                         <>
-                          <Save className="h-4 w-4" />
-                          Save AI Settings
+                          <Save className="mr-2 h-4 w-4" />
+                          Save Changes
                         </>
                       )}
                     </Button>
@@ -1201,7 +1248,7 @@ const Settings = () => {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="privacy" className="space-y-6">
+              <TabsContent value="privacy">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center">
@@ -1209,91 +1256,153 @@ const Settings = () => {
                       Privacy Settings
                     </CardTitle>
                     <CardDescription>
-                      Control how your data is used and shared
+                      Manage your data sharing and privacy preferences
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="share-data">Share Data for Research</Label>
+                      <div className="space-y-1">
+                        <Label>Share Health Data</Label>
                         <p className="text-sm text-muted-foreground">
-                          Contribute anonymized data to help improve health analytics
+                          Allow sharing anonymized health data for research
                         </p>
                       </div>
-                      <Switch 
-                        id="share-data" 
+                      <Switch
                         checked={shareData}
                         onCheckedChange={setShareData}
                         disabled={loading}
                       />
                     </div>
                     <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="analytics">Anonymous Usage Analytics</Label>
+                      <div className="space-y-1">
+                        <Label>Anonymous Analytics</Label>
                         <p className="text-sm text-muted-foreground">
-                          Help us improve by sharing anonymous app usage data
+                          Enable anonymous usage analytics to improve the app
                         </p>
                       </div>
-                      <Switch 
-                        id="analytics" 
+                      <Switch
                         checked={anonymousAnalytics}
                         onCheckedChange={setAnonymousAnalytics}
                         disabled={loading}
                       />
                     </div>
-
-                    <div className="pt-4">
-                      <Label className="mb-2 block">Data Export Options</Label>
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" className="flex items-center gap-1">
-                          <Key className="h-3 w-3" />
-                          Export All Data
-                        </Button>
-                        <Button variant="outline" size="sm" className="flex items-center gap-1">
-                          <MailWarning className="h-3 w-3" />
-                          Request Data Deletion
-                        </Button>
-                      </div>
-                    </div>
                   </CardContent>
                   <CardFooter>
-                    <div className="flex items-center text-sm text-amber-500 mr-auto">
-                      <AlertCircle className="mr-1 h-4 w-4" />
-                      Changes take effect immediately
-                    </div>
-                    <Button onClick={handleSavePrivacySettings} className="flex items-center gap-2" disabled={loading}>
-                      <Save className="h-4 w-4" />
-                      Save Privacy Settings
+                    <Button 
+                      onClick={handleSavePrivacySettings}
+                      disabled={saveLoading || loading}
+                      className="ml-auto"
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
                     </Button>
                   </CardFooter>
                 </Card>
+              </TabsContent>
 
+              <TabsContent value="collaboration">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center">
-                      <Mail className="mr-2 h-5 w-5 text-health-primary" />
-                      Communication Preferences
+                      <Calendar className="mr-2 h-5 w-5 text-health-primary" />
+                      Collaboration
                     </CardTitle>
                     <CardDescription>
-                      Control what types of emails you receive
+                      Connect with third-party services like Google Calendar
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="marketing-emails">Marketing Emails</Label>
-                      <Switch id="marketing-emails" defaultChecked={false} disabled={loading} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="product-updates">Product Updates</Label>
-                      <Switch id="product-updates" defaultChecked disabled={loading} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="health-newsletters">Health Newsletters</Label>
-                      <Switch id="health-newsletters" defaultChecked disabled={loading} />
+                  <CardContent className="space-y-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <Label>Google Calendar Integration</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Sync your workouts and health events with Google Calendar
+                          </p>
+                        </div>
+                        {googleCalendarConnected ? (
+                          <Button 
+                            variant="destructive" 
+                            onClick={handleDisconnectGoogleCalendar}
+                            disabled={saveLoading || loading}
+                          >
+                            Disconnect
+                          </Button>
+                        ) : (
+                          <Button 
+                            onClick={handleConnectGoogleCalendar}
+                            disabled={saveLoading || loading}
+                          >
+                            Connect
+                          </Button>
+                        )}
+                      </div>
+                      {googleCalendarConnected && (
+                        <div className="space-y-4 border-t pt-4">
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <Label>Sync Workouts</Label>
+                              <p className="text-sm text-muted-foreground">
+                                Add workout sessions to your calendar
+                              </p>
+                            </div>
+                            <Switch
+                              checked={syncWorkouts}
+                              onCheckedChange={setSyncWorkouts}
+                              disabled={loading}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <Label>Sync Health Events</Label>
+                              <p className="text-sm text-muted-foreground">
+                                Add health-related events to your calendar
+                              </p>
+                            </div>
+                            <Switch
+                              checked={syncHealthEvents}
+                              onCheckedChange={setSyncHealthEvents}
+                              disabled={loading}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="calendar-id">Calendar ID</Label>
+                            <Input
+                              id="calendar-id"
+                              value={calendarId}
+                              onChange={(e) => setCalendarId(e.target.value)}
+                              placeholder="primary"
+                              disabled={loading}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Enter the ID of the calendar to sync with (default: primary)
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Button variant="outline" className="ml-auto" disabled={loading}>Save Preferences</Button>
+                    <Button 
+                      onClick={handleSaveCalendarSettings}
+                      disabled={saveLoading || loading || !googleCalendarConnected}
+                      className="ml-auto"
+                    >
+                      {saveLoading ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
                   </CardFooter>
                 </Card>
               </TabsContent>
