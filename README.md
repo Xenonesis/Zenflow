@@ -1,144 +1,215 @@
-# Mental Wellbeing Dashboard
+# Zenflow - Mental Wellbeing Dashboard
 
 ![Version](https://img.shields.io/badge/version-2.1-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![React](https://img.shields.io/badge/React-18.3.1-61dafb)
+![Vite](https://img.shields.io/badge/Vite-5.4.1-646cff)
 
-A comprehensive mental wellbeing tracking application that helps users monitor various aspects of their mental health and wellbeing including mood, sleep, exercise, meditation, journaling, and self-care activities.
+Zenflow is a comprehensive mental wellbeing tracking application built with React, Vite, and Supabase. It helps users monitor various aspects of their mental health and wellbeing including mood, sleep, exercise, meditation, journaling, and self-care activities.
 
-## Features
+## 🌟 Features
 
-- **User Authentication**: Secure login/signup via Supabase Auth
-- **Mood Tracking**: Log daily mood with ratings and factors
+### Core Features
+- **Personalized Dashboard**: A comprehensive overview of all your wellbeing metrics in one place
+- **User Authentication**: Secure login/signup via Supabase Auth with email verification
+- **Profile Management**: Customize your profile and preferences
+
+### Health Tracking
+- **Mood Tracking**: Log daily mood with ratings and influencing factors
 - **Sleep Logging**: Track sleep duration, quality, and influencing factors
 - **Exercise Tracking**: Record workouts with duration, intensity, and other metrics
-- **Meditation Log**: Monitor meditation sessions and feelings
-- **Journaling**: Record thoughts and reflections
-- **Self-Care Activities**: Log various self-care practices
+- **Meditation Log**: Monitor meditation sessions and feelings afterward
+- **Journaling**: Record thoughts and reflections with rich text formatting
+- **Self-Care Activities**: Log various self-care practices and set reminders
+
+### Advanced Features
+- **Health Activities Calendar**: Schedule and track health-related activities
 - **Wellness Trends**: Visualize data trends over time with interactive charts
-- **Responsive Design**: Works on desktop and mobile devices
+- **AI Insights**: Get personalized insights based on your health data patterns
+- **Responsive Design**: Optimized for both desktop and mobile devices
+- **Dark/Light Mode**: Choose your preferred theme for comfortable viewing
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-- **Frontend**: Next.js, React, TypeScript
-- **UI Components**: Shadcn UI, Tailwind CSS
-- **State Management**: React Hooks
-- **Database & Auth**: Supabase
-- **Charts**: Recharts
-- **Form Handling**: React Hook Form, Zod
+### Frontend
+- **Framework**: React 18.3.1 with TypeScript
+- **Build Tool**: Vite 5.4.1
+- **Routing**: React Router DOM 6.26.2
+- **UI Components**: 
+  - Shadcn UI (powered by Radix UI)
+  - Tailwind CSS 3.4.11
+  - Framer Motion for animations
+- **State Management**: React Hooks and Context API
+- **Form Handling**: React Hook Form with Zod validation
 
-## Setup Instructions
+### Backend
+- **Database**: PostgreSQL (via Supabase)
+- **Authentication**: Supabase Auth
+- **API**: Supabase JS Client 2.49.4
+- **Data Fetching**: TanStack Query 5.75.2
 
-### Prerequisites
+### Data Visualization
+- **Charts**: Recharts 2.12.7
+- **Date Handling**: date-fns 3.6.0
+- **Calendar**: React Day Picker 8.10.1
+
+## 📋 Prerequisites
 
 - Node.js (v16 or higher)
-- NPM or Yarn
+- NPM or Yarn or Bun
 - Supabase account
+- Modern web browser
 
-### Supabase Setup
+## 🚀 Getting Started
 
-1. Create a new project on [Supabase](https://supabase.com/)
-2. Once your project is created, go to the project settings to find your API keys
-3. Create the required database tables using the SQL script provided in `src/lib/db-setup.sql`
-4. Optional: Add sample data using `src/lib/seed-data.sql` (don't forget to replace 'your-user-id-here' with your actual user ID)
+### 1. Clone the Repository
 
-#### Database Schema Setup
+```bash
+git clone https://github.com/yourusername/zenflow.git
+cd zenflow
+```
 
-Execute the SQL script provided in `src/lib/db-setup.sql` in the Supabase SQL Editor to create all necessary tables:
+### 2. Install Dependencies
 
-1. Go to your Supabase project
-2. Navigate to the SQL Editor
-3. Copy and paste the contents of `src/lib/db-setup.sql`
-4. Run the query to create all tables and set up permissions
+```bash
+# Using npm
+npm install
 
-### Environment Setup
+# Using yarn
+yarn
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/mental-wellbeing-dashboard.git
-   cd mental-wellbeing-dashboard
-   ```
+# Using bun
+bun install
+```
 
-2. Install dependencies:
-   ```
-   npm install
-   # or
-   yarn
-   ```
+### 3. Supabase Setup
 
-3. Create a `.env.local` file in the root directory with your Supabase credentials:
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-   ```
+#### Create a Supabase Project
+1. Go to [Supabase](https://supabase.com/) and sign up/login
+2. Create a new project
+3. Note your Supabase URL and anon key from the project API settings
 
-4. Start the development server:
-   ```
-   npm run dev
-   # or
-   yarn dev
-   ```
+#### Database Setup
+Zenflow requires several database tables. You can set these up in one of two ways:
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+**Option 1: Using the Web Interface**
+1. Navigate to the SQL Editor in your Supabase dashboard
+2. Copy and paste the SQL scripts from the following files:
+   - `DATABASE_SETUP.md`
+   - `SETUP_INSTRUCTIONS.md` (for health activities calendar)
+3. Execute the queries to create all required tables and set up permissions
 
-## Adding Test Data
+**Option 2: Using the CLI Tool**
+```bash
+npm run run-sql
+# or
+npm run create-health-table
+```
 
-After setting up the database tables, you can insert test data using the SQL script in `src/lib/seed-data.sql`:
+### 4. Environment Configuration
 
-1. Go to the Supabase SQL Editor
-2. Replace 'your-user-id-here' in the script with your actual user ID from Supabase auth
-3. Run the script to insert sample data across all tables
+Create a `.env` file in the project root:
 
-## User Guide
+```
+VITE_SUPABASE_URL=your-supabase-project-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
 
-### Dashboard
+### 5. Run the Development Server
 
-The main dashboard provides an overview of all your wellbeing metrics with separate cards for each aspect:
+```bash
+npm run dev
+```
 
-- **Mood Tracker**: Shows your recent mood entries
-- **Sleep Log**: Displays recent sleep quality and patterns
-- **Exercise Log**: Lists your recent physical activities
-- **Meditation Log**: Shows meditation sessions
-- **Journal Log**: Lists recent journal entries
-- **Self-Care Log**: Shows self-care activities
-- **Wellness Trends**: Visualizes data over time
+This will start the development server at http://localhost:5173 (default Vite port)
 
-### Adding Entries
+## 📊 Database Schema
 
-Each card includes an "Add" button that opens a form dialog to add a new entry:
+Zenflow uses several tables to store user data:
 
-1. Click the "+" button on the respective card
-2. Fill in the details in the form
-3. Click "Save" to record your entry
-4. The dashboard will automatically update with your new data
+### Profiles Table
+- User profile information
+- Automatically created when a user signs up
+- Stores preferences and personal information
 
-## Troubleshooting
+### Health Metrics Table
+- Stores various health data points
+- Supports multiple metric types (weight, sleep, etc.)
+- Includes timestamps for trend analysis
 
-### Database Connection Issues
+### Workouts Table
+- Records exercise sessions
+- Tracks duration, intensity, calories burned
+- Supports various workout types
 
-If you encounter 404 errors when fetching data, check that:
+### Mood Entries Table
+- Tracks mood scores and factors
+- Includes notes for context
+- Time-stamped for trend analysis
 
-1. Your Supabase URL and anon key are correct in `.env.local`
-2. All required database tables have been created
-3. You're logged in with a valid user account
-4. Row-level security policies are properly set up
+### Health Activities Table
+- Schedules health-related activities
+- Supports recurring events
+- Includes reminders functionality
 
-### Chart Rendering Issues
+## 🔒 Security Features
 
-If charts aren't displaying correctly:
+- **Row Level Security**: All database tables are protected by RLS policies
+- **User Isolation**: Users can only access their own data
+- **Secure Authentication**: Email-based authentication with password recovery
+- **Environment Variables**: Sensitive configuration stored in environment variables
 
-1. Ensure you have data in the respective tables
-2. Check browser console for errors
-3. Verify that your user ID matches the data in the database
+## 🧪 Testing
 
-## Contributing
+For database connection testing, you can run:
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+```bash
+npm run test-db
+```
 
-## License
+## 📱 Responsive Design
+
+Zenflow is built with a mobile-first approach and works well on:
+- Desktop browsers
+- Tablets
+- Mobile phones
+- Different screen orientations
+
+## 🚀 Deployment
+
+### Building for Production
+
+```bash
+npm run build
+```
+
+This will generate optimized static files in the `dist` directory.
+
+### Hosting Options
+
+- **Netlify/Vercel**: Easy deployment with continuous integration
+- **GitHub Pages**: Free hosting for static sites
+- **Firebase Hosting**: Google's hosting platform with additional features
+- **AWS/GCP/Azure**: Enterprise-grade cloud hosting
+
+## 🤝 Contributing
+
+We welcome contributions! Please follow these steps:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m "Add some amazing feature"`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
+## 👏 Acknowledgments
 
 - Shadcn UI for the beautiful component library
-- Supabase for the backend infrastructure
-- The Next.js team for the amazing framework
+- Supabase for the powerful backend infrastructure
+- Vite team for the lightning-fast build tool
+- The React team for the amazing framework
+- All open source contributors whose libraries make this project possible
