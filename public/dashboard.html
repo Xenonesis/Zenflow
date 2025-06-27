@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZenFlow Dashboard</title>
+    <link rel="icon" href="favicon.ico?v=3" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #8A2BE2;
+            --primary-light: #9370DB;
+            --secondary: #20B2AA;
+            --secondary-light: #48D1CC;
+            --dark: #0F172A;
+            --darker: #0B1120;
+            --text: #E2E8F0;
+            --text-muted: #94A3B8;
+            --border: #1E293B;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--darker);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+        }
+        
+        .sidebar {
+            width: 180px;
+            background-color: var(--dark);
+            border-right: 1px solid var(--border);
+            padding: 1rem 0;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            font-size: 1rem;
+            color: white;
+        }
+        
+        .logo svg {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all 0.2s;
+            margin: 0.25rem 0;
+        }
+        
+        .nav-item.active, .nav-item:hover {
+            background-color: rgba(138, 43, 226, 0.1);
+            color: white;
+            border-left: 3px solid var(--primary);
+        }
+        
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+        }
+        
+        .main-content {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .page-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .tabs {
+            display: flex;
+            background-color: var(--dark);
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+            padding: 0.5rem;
+            gap: 0.5rem;
+        }
+        
+        .tab {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+        
+        .tab.active {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .tab svg {
+            width: 16px;
+            height: 16px;
+            margin-right: 6px;
+        }
+        
+        .welcome-card {
+            background-color: var(--dark);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .welcome-info h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .welcome-info .date {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+        
+        .health-score {
+            margin-top: 0.75rem;
+            font-size: 0.875rem;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            width: 84%;
+        }
+        
+        .stat-cards {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .stat-card {
+            background-color: var(--dark);
+            border-radius: 8px;
+            padding: 1.5rem;
+            flex: 1;
+        }
+        
+        .section-header {
+            margin: 0.5rem 0 1rem 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+        
+        .section-header::before {
+            content: "";
+            display: inline-block;
+            width: 4px;
+            height: 1em;
+            background-color: var(--primary);
+            margin-right: 0.5rem;
+            border-radius: 2px;
+        }
+        
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .record-card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: var(--dark);
+        }
+        
+        .record-date {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+        
+        .record-title {
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .record-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .achievement-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+        
+        .achievement-card {
+            background-color: #F8F9FA;
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            color: var(--dark);
+        }
+        
+        .achievement-icon {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 0.75rem;
+        }
+        
+        .achievement-title {
+            font-size: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .achievement-progress {
+            width: 100%;
+            height: 4px;
+            background-color: #E2E8F0;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .achievement-fill {
+            height: 100%;
+            background-color: var(--primary);
+        }
+        
+        .chart-row {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .chart-card {
+            background-color: var(--dark);
+            border-radius: 8px;
+            padding: 1.5rem;
+            flex: 1;
+        }
+        
+        .chart-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        .chart {
+            height: 200px;
+            position: relative;
+        }
+        
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 150px;
+            padding-top: 1rem;
+            justify-content: space-around;
+        }
+        
+        .bar {
+            width: 30px;
+            background-color: var(--primary);
+            border-radius: 4px 4px 0 0;
+        }
+        
+        .bar-label {
+            text-align: center;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+        
+        .line-chart {
+            height: 150px;
+            position: relative;
+        }
+        
+        .line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .line-label {
+            position: absolute;
+            left: 0;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+        
+        .workout-history {
+            background-color: var(--dark);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .workout-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .workout-badge {
+            background-color: var(--primary);
+            color: white;
+            border-radius: 1rem;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.75rem;
+        }
+        
+        .no-workouts {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 2rem 0;
+        }
+        
+        .user-profile {
+            margin-top: auto;
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 10px;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .header-btn {
+            background-color: var(--dark);
+            border: none;
+            border-radius: 4px;
+            padding: 0.5rem;
+            color: var(--text);
+            cursor: pointer;
+        }
+        
+        .tab-btn-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 99px;
+            border: 1px solid var(--border);
+            background-color: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+        
+        .tab-btn.active {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#8A2BE2" />
+                        <stop offset="100%" stop-color="#20B2AA" />
+                    </linearGradient>
+                </defs>
+                <path d="M4,4 L20,4 L8,12 C6,13 7,16 10,15 C14,14 17,10 20,10 C22,10 22,14 19,15 C16,16 12,18 8,21 C4,24 0,21 0,17 C0,13 2,10 6,9 L20,9" 
+                      stroke="url(#logoGradient)" 
+                      stroke-width="2" 
+                      stroke-linecap="round" 
+                      stroke-linejoin="round"
+                      fill="none" />
+            </svg>
+            ZenFlow
+        </div>
+        
+        <a href="#" class="nav-item active">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            Dashboard
+        </a>
+        
+        <a href="#" class="nav-item">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Calendar
+        </a>
+        
+        <a href="#" class="nav-item">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            History
+        </a>
+        
+        <a href="#" class="nav-item">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Workouts
+        </a>
+        
+        <a href="#" class="nav-item">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            Mental Health
+        </a>
+        
+        <a href="#" class="nav-item">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            AI Insights
+        </a>
+        
+        <a href="#" class="nav-item">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            About
+        </a>
+        
+        <a href="#" class="nav-item">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Settings
+        </a>
+        
+        <div class="user-profile">
+            <div class="user-avatar">U</div>
+            <span>User</span>
+        </div>
+    </aside>
+    
+    <main class="main-content">
+        <div class="header">
+            <h1 class="page-title">ZenFlow Dashboard</h1>
+            <div class="header-actions">
+                <div class="tab-btn-group">
+                    <button class="tab-btn active">Physical</button>
+                    <button class="tab-btn">Mental</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tabs">
+            <div class="tab active">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+                Dashboard
+            </div>
+            <div class="tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Calendar
+            </div>
+            <div class="tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                History
+            </div>
+            <div class="tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Workouts
+            </div>
+            <div class="tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                Mental Health
+            </div>
+            <div class="tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                AI Insights
+            </div>
+            <div class="tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                About
+            </div>
+        </div>
+        
+        <div class="welcome-card">
+            <div class="welcome-info">
+                <h2>Good Morning, User</h2>
+                <div class="date">Monday, May 6, 2024</div>
+                <div class="health-score">Today's health score: 84/100</div>
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+            </div>
+            <div class="welcome-stats">
+                <div style="text-align: center;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8A2BE2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 15l-2-4-7-1 5-5-1-7 6 3 6-3-1 7 5 5-7 1z"></path>
+                    </svg>
+                    <div style="margin-top: 8px;">Keep it up!</div>
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="section-header">Physical Health</h2>
+        
+        <div class="stat-cards">
+            <div class="stat-card">
+                <h3>Personal Records</h3>
+                <div class="cards-grid">
+                    <div class="record-card">
+                        <div class="record-date">Apr 15</div>
+                        <div class="record-title">Max Weight (Squat)</div>
+                        <div class="record-value">225 lbs</div>
+                    </div>
+                    <div class="record-card">
+                        <div class="record-date">May 2</div>
+                        <div class="record-title">Longest Run</div>
+                        <div class="record-value">12 km</div>
+                    </div>
+                    <div class="record-card">
+                        <div class="record-date">Apr 22</div>
+                        <div class="record-title">Fastest 5K</div>
+                        <div class="record-value">22:15</div>
+                    </div>
+                    <div class="record-card">
+                        <div class="record-date">May 1</div>
+                        <div class="record-title">Daily Step Record</div>
+                        <div class="record-value">18,542</div>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <h3>Achievements & Badges</h3>
+                <div class="achievement-cards">
+                    <div class="achievement-card">
+                        <div class="achievement-icon">🏆</div>
+                        <div class="achievement-title">Complete 5 morning workouts</div>
+                        <div class="achievement-progress">
+                            <div class="achievement-fill" style="width: 100%;"></div>
+                        </div>
+                    </div>
+                    <div class="achievement-card">
+                        <div class="achievement-icon">💪</div>
+                        <div class="achievement-title">Lift 1000 lbs total in one session</div>
+                        <div class="achievement-progress">
+                            <div class="achievement-fill" style="width: 80%;"></div>
+                        </div>
+                    </div>
+                    <div class="achievement-card">
+                        <div class="achievement-icon">🏃</div>
+                        <div class="achievement-title">Run a total of 100km</div>
+                        <div class="achievement-progress">
+                            <div class="achievement-fill" style="width: 75%;"></div>
+                        </div>
+                    </div>
+                    <div class="achievement-card">
+                        <div class="achievement-icon">👑</div>
+                        <div class="achievement-title">Work out 10 days in a row</div>
+                        <div class="achievement-progress">
+                            <div class="achievement-fill" style="width: 70%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-row">
+            <div class="chart-card">
+                <h3 class="chart-title">Weekly Calories Burned</h3>
+                <div class="bar-chart">
+                    <div>
+                        <div class="bar" style="height: 50%;"></div>
+                        <div class="bar-label">Mon</div>
+                    </div>
+                    <div>
+                        <div class="bar" style="height: 70%;"></div>
+                        <div class="bar-label">Tue</div>
+                    </div>
+                    <div>
+                        <div class="bar" style="height: 40%;"></div>
+                        <div class="bar-label">Wed</div>
+                    </div>
+                    <div>
+                        <div class="bar" style="height: 60%;"></div>
+                        <div class="bar-label">Thu</div>
+                    </div>
+                    <div>
+                        <div class="bar" style="height: 90%;"></div>
+                        <div class="bar-label">Fri</div>
+                    </div>
+                    <div>
+                        <div class="bar" style="height: 55%;"></div>
+                        <div class="bar-label">Sat</div>
+                    </div>
+                    <div>
+                        <div class="bar" style="height: 35%;"></div>
+                        <div class="bar-label">Sun</div>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">Heart Rate Today</h3>
+                <div class="line-chart">
+                    <svg width="100%" height="100%" viewBox="0 0 400 150" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="chartGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#8A2BE2" />
+                                <stop offset="100%" stop-color="#20B2AA" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M0,120 C20,100 40,110 60,90 S100,50 120,65 S160,80 180,65 S220,60 240,70 S280,40 300,20 S340,50 360,90 S380,120 400,130" 
+                              fill="none" 
+                              stroke="url(#chartGradient)" 
+                              stroke-width="3" />
+                        <g fill="#8A2BE2" opacity="0.8">
+                            <circle cx="60" cy="90" r="3" />
+                            <circle cx="120" cy="65" r="3" />
+                            <circle cx="180" cy="65" r="3" />
+                            <circle cx="240" cy="70" r="3" />
+                            <circle cx="300" cy="20" r="3" />
+                            <circle cx="360" cy="90" r="3" />
+                            <circle cx="400" cy="130" r="3" />
+                        </g>
+                    </svg>
+                    <div class="line" style="top: 25%;"></div>
+                    <div class="line" style="top: 50%;"></div>
+                    <div class="line" style="top: 75%;"></div>
+                    <div class="line-label" style="top: 25%;">120 bpm</div>
+                    <div class="line-label" style="top: 50%;">90 bpm</div>
+                    <div class="line-label" style="top: 75%;">60 bpm</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="workout-history">
+            <div class="workout-header">
+                <h3 class="chart-title">Workout History</h3>
+                <div class="workout-badge">Last 7 days</div>
+            </div>
+            <div class="no-workouts">No workout history found for the last 7 days</div>
+        </div>
+    </main>
+</body>
+</html> 

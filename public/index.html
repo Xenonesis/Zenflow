@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZenFlow - Mindful Wellbeing Dashboard</title>
+    <link rel="icon" href="favicon.ico?v=2" type="image/x-icon">
+    <link rel="shortcut icon" href="favicon.ico?v=2" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #F8F9FA;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 30px;
+            color: #343A40;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        h1 {
+            font-family: 'Poppins', sans-serif;
+            font-weight: 600;
+            font-size: 42px;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #8A2BE2, #20B2AA);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .tagline {
+            font-size: 18px;
+            color: #6c757d;
+            max-width: 600px;
+            text-align: center;
+        }
+        .logo {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 24px;
+        }
+        main {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+        .feature {
+            display: flex;
+            align-items: center;
+            margin-bottom: 32px;
+            gap: 24px;
+        }
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(32, 178, 170, 0.1));
+            flex-shrink: 0;
+        }
+        .feature-icon svg {
+            width: 32px;
+            height: 32px;
+        }
+        .feature-content h2 {
+            font-family: 'Poppins', sans-serif;
+            font-weight: 600;
+            font-size: 20px;
+            margin: 0 0 8px 0;
+            color: #343A40;
+        }
+        .feature-content p {
+            margin: 0;
+            line-height: 1.6;
+            color: #6c757d;
+        }
+        .cta {
+            display: inline-block;
+            background: linear-gradient(135deg, #8A2BE2, #20B2AA);
+            color: white;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 600;
+            padding: 12px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            margin-top: 24px;
+            box-shadow: 0 4px 12px rgba(138, 43, 226, 0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(138, 43, 226, 0.3);
+        }
+        footer {
+            margin-top: 60px;
+            color: #6c757d;
+            text-align: center;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <svg class="logo" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="zenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#8A2BE2" />
+                    <stop offset="100%" stop-color="#20B2AA" />
+                </linearGradient>
+            </defs>
+            <rect width="200" height="200" fill="none" />
+            <!-- Stylized Z flowing into wave -->
+            <path d="M40,40 L160,40 L70,105 C60,112 65,125 75,128 C95,135 115,125 130,110 C145,95 155,80 170,80 C185,80 190,95 180,105 C170,115 150,120 130,135 C100,160 60,150 50,130 C40,110 50,90 70,80 L160,80" 
+                  stroke="url(#zenGradient)" 
+                  stroke-width="12" 
+                  stroke-linecap="round" 
+                  stroke-linejoin="round"
+                  fill="none" />
+        </svg>
+        <h1>ZenFlow</h1>
+        <p class="tagline">Achieve balance and optimal mental states through mindfulness</p>
+    </header>
+
+    <main>
+        <div class="feature">
+            <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="url(#zenGradient)" stroke-width="2" />
+                    <path d="M12 6V12L16 14" stroke="url(#zenGradient)" stroke-width="2" stroke-linecap="round" />
+                </svg>
+            </div>
+            <div class="feature-content">
+                <h2>Track Your Mindfulness Journey</h2>
+                <p>Monitor your daily practice and see your progress over time with intuitive visualizations and insights.</p>
+            </div>
+        </div>
+
+        <div class="feature">
+            <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="url(#zenGradient)" stroke-width="2" />
+                    <path d="M12 8L12 16" stroke="url(#zenGradient)" stroke-width="2" stroke-linecap="round" />
+                    <path d="M16 12L8 12" stroke="url(#zenGradient)" stroke-width="2" stroke-linecap="round" />
+                </svg>
+            </div>
+            <div class="feature-content">
+                <h2>Personalized Practices</h2>
+                <p>Discover customized mindfulness exercises and meditation sessions based on your unique needs and goals.</p>
+            </div>
+        </div>
+
+        <div class="feature">
+            <div class="feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="url(#zenGradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </div>
+            <div class="feature-content">
+                <h2>Achieve Flow State</h2>
+                <p>Learn techniques to enter and maintain flow states for peak performance and deeper enjoyment of daily activities.</p>
+            </div>
+        </div>
+
+        <center>
+            <a href="#" class="cta">Start Your Journey</a>
+        </center>
+    </main>
+
+    <footer>
+        <p>© 2024 ZenFlow - Mindful Wellbeing Dashboard</p>
+        <p style="margin-top: 5px; font-size: 12px;">
+            <a href="brand-test.html" style="color: #8A2BE2;">View Brand Test Page</a>
+        </p>
+    </footer>
+</body>
+</html> 

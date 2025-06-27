@@ -1,0 +1,10 @@
+This is a placeholder for the dashboard-preview.png image that should be placed here.
+
+The image should show a screenshot of the ZenFlow dashboard with all its new components:
+- Quick stats with activity rings
+- Physical or Mental health dashboard with tabs
+- Recent workouts or mood logs
+- Personal records and achievements
+- Health statistics with visualizations
+
+The image should be in high resolution (1200x700px) with the ZenFlow color scheme (purples and teals). 

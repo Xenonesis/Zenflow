@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serene Brand Logo</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f5f7fa;
+            font-family: 'Montserrat', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 40px;
+        }
+        .logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 50px;
+        }
+        .logo {
+            width: 200px;
+            height: 200px;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+        }
+        .logo-with-text {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .brand-name {
+            font-size: 36px;
+            font-weight: bold;
+            color: #4A90E2;
+            margin-top: 15px;
+        }
+        .favicon-preview {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 60px;
+        }
+        .favicon {
+            width: 32px;
+            height: 32px;
+            margin: 10px;
+        }
+        .favicon-sizes {
+            display: flex;
+            align-items: flex-end;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Serene Brand Logo</h1>
+    
+    <div class="logo-container">
+        <!-- Main Logo -->
+        <div>
+            <svg class="logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#4A90E2" />
+                        <stop offset="100%" stop-color="#3498db" />
+                    </linearGradient>
+                </defs>
+                <path d="M75,50 C75,30 60,20 45,20 C30,20 25,30 25,40 C25,50 35,60 50,60 C65,60 70,70 70,80 C70,90 60,95 45,95 C30,95 25,85 25,70" 
+                      stroke="url(#gradient)" 
+                      stroke-width="10" 
+                      stroke-linecap="round" 
+                      fill="none" />
+            </svg>
+        </div>
+
+        <!-- Logo with text -->
+        <div class="logo-with-text">
+            <svg class="logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#4A90E2" />
+                        <stop offset="100%" stop-color="#3498db" />
+                    </linearGradient>
+                </defs>
+                <circle cx="50" cy="50" r="45" fill="#f5f7fa" stroke="url(#gradient2)" stroke-width="2" />
+                <path d="M70,50 C70,35 58,26 45,26 C32,26 28,34 28,42 C28,50 36,58 48,58 C60,58 65,66 65,74 C65,82 56,86 43,86 C30,86 26,78 26,66" 
+                      stroke="url(#gradient2)" 
+                      stroke-width="8" 
+                      stroke-linecap="round" 
+                      fill="none" />
+            </svg>
+            <div class="brand-name">Serene</div>
+        </div>
+    </div>
+
+    <!-- Favicon Previews -->
+    <div class="favicon-preview">
+        <h2>Favicon Previews</h2>
+        <div class="favicon-sizes">
+            <div>
+                <p>16×16px</p>
+                <svg class="favicon" style="width: 16px; height: 16px;" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M75,50 C75,30 60,20 45,20 C30,20 25,30 25,40 C25,50 35,60 50,60 C65,60 70,70 70,80 C70,90 60,95 45,95 C30,95 25,85 25,70" 
+                      stroke="#4A90E2" 
+                      stroke-width="20" 
+                      stroke-linecap="round" 
+                      fill="none" />
+                </svg>
+            </div>
+            <div>
+                <p>32×32px</p>
+                <svg class="favicon" style="width: 32px; height: 32px;" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M75,50 C75,30 60,20 45,20 C30,20 25,30 25,40 C25,50 35,60 50,60 C65,60 70,70 70,80 C70,90 60,95 45,95 C30,95 25,85 25,70" 
+                      stroke="#4A90E2" 
+                      stroke-width="20" 
+                      stroke-linecap="round" 
+                      fill="none" />
+                </svg>
+            </div>
+            <div>
+                <p>64×64px</p>
+                <svg class="favicon" style="width: 64px; height: 64px;" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M75,50 C75,30 60,20 45,20 C30,20 25,30 25,40 C25,50 35,60 50,60 C65,60 70,70 70,80 C70,90 60,95 45,95 C30,95 25,85 25,70" 
+                      stroke="#4A90E2" 
+                      stroke-width="20" 
+                      stroke-linecap="round" 
+                      fill="none" />
+                </svg>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 
